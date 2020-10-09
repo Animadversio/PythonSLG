@@ -60,7 +60,7 @@ class Control():
         self.state = self.state_dict[self.state_name]
         self.state.startup(self.current_time, persist)
 
-    def event_loop(self):
+    def event_loop(self): # just record the event and distribute them not doing any real
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 self.done = True
