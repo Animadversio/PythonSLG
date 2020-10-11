@@ -1,3 +1,4 @@
+#%%
 import pygame as pg
 from source.util import Queue
 pg.display.set_caption("SLG board")
@@ -17,7 +18,7 @@ TileW = 50
 Margin = 2
 CsrWidth = 5
 UMargin = 20
-playerColor = {1: (20, 20, 20), 2: (120, 20, 20)}
+playerColor = {1: (20, 20, 20), 2: (120, 20, 20)} # Color for each player number 
 
 class Unit:
     def __init__(self, player, pos, cfg=None):
@@ -55,6 +56,7 @@ def playerIterator(playerList):
         for player in playerList: # and player is alive
             yield player, turn
 
+# UIState Definition
 END_TURN = 0
 SELECT_UNIT = 1
 SELECT_ACTION = 2
@@ -62,8 +64,8 @@ SELECT_MOVTARGET = 3
 SELECT_ATTTARGET = 4
 class GameStateCtrl:
     def __init__(G):
-        G.curPlayer = 2
         G.playerList = [1, 2]
+        G.curPlayer = G.playerList[-1] # UIState starts from END_TURN so it will transition into first player
         G.playerIter = playerIterator(G.playerList)
         G.curTurn = 0
         G.screen = screen
@@ -82,6 +84,7 @@ class GameStateCtrl:
         G.unitList.append(Unit(player=2, pos=(8, 8), cfg=CatapultCfg))
 
     def GUI_loop(G, GUI=True, csr_pos=(5, 6)):
+        """This is less hierarchical, more linear programming style"""
         ci, cj = csr_pos # csr is a GUI concept not a gameState
         Exitflag = False
         while not Exitflag:
@@ -111,7 +114,7 @@ class GameStateCtrl:
                 G.UIstate = END_TURN
 
             if G.UIstate is END_TURN:
-                nextPlayer, nextTurn = next(G.playerIter)# playerList[playerList.index(curPlayer)+1]
+                nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
                 # Do sth at turn over
                 for unit in G.unitList:
                     if unit.player is nextPlayer: unit.moved = False
@@ -157,16 +160,19 @@ class GameStateCtrl:
                         # Real computation code for attack
                         harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
                         attacked.HP -= abs(harm)
+                        if attacked.HP <= 0:
+                            attacked.alive = False
+                            G.unitList.pop(G.unitList.index(attacked))
                         attDis = abs(ci - G.curUnit.pos[0]) + abs(cj - G.curUnit.pos[1])
-                        counterattack = attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]  # and bla bla bla
+                        counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
                         if counterattack:
                             harm2 = int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence
                             G.curUnit.HP -= abs(harm2)
-                        # TODO: Currently Attacker and Attacked could Die together!
-                        if G.curUnit.HP <= 0:
-                            G.unitList.pop(G.unitList.index(G.curUnit))
-                        if attacked.HP <= 0:
-                            G.unitList.pop(G.unitList.index(attacked))
+                            # FIXED: Currently Attacker and Attacked could Die together!
+                            if G.curUnit.HP <= 0:
+                                G.curUnit.alive = False
+                                G.unitList.pop(G.unitList.index(G.curUnit))
+
                     if len(targetPos) == 0:
                         print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
                     G.curUnit.moved = True
@@ -180,6 +186,52 @@ class GameStateCtrl:
             G.drawUnitList(G.unitList)
             G.drawCsrLocation([(ci, cj)])  # draw a list of location in one color
             pg.display.update()
+
+    def action_exec(G, action_type, param=[]):
+        if action_type is "turnover":
+            G.endTurn()
+        if action_type is "select":
+
+        if action_type is "move":
+
+        if action_type is "attack":
+
+    def endTurn(G):
+        nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
+        # Do sth at turn over
+        for unit in G.unitList:
+            if unit.player is nextPlayer: unit.moved = False
+            if unit.player is G.curPlayer: unit.moved = True
+        G.curPlayer, G.curTurn = nextPlayer, nextTurn
+        G.UIstate = SELECT_UNIT
+
+    def selectUnit(G, csr):
+        posDict = {unit.pos: unit for unit in G.unitList}
+        selectable_pos, selectable_unit = G.getSelectableUnit()  # unitList, curPlayer  # add condition for selectable
+        if csr in selectable_pos:
+            print("Unit selected (%d, %d)" % (*csr, ))
+            G.curUnit = posDict[csr]  # unitList[unitId]
+            G.UIstate = SELECT_MOVTARGET
+        else:
+            raise ValueError
+
+    def move(G, csr):
+        nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
+        # Do sth at turn over
+        for unit in G.unitList:
+            if unit.player is nextPlayer: unit.moved = False
+            if unit.player is G.curPlayer: unit.moved = True
+        G.curPlayer, G.curTurn = nextPlayer, nextTurn
+        G.UIstate = SELECT_UNIT
+
+    def attack(G, targetPos):
+        nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
+        # Do sth at turn over
+        for unit in G.unitList:
+            if unit.player is nextPlayer: unit.moved = False
+            if unit.player is G.curPlayer: unit.moved = True
+        G.curPlayer, G.curTurn = nextPlayer, nextTurn
+        G.UIstate = SELECT_UNIT
 
     def drawBackground(G):
         pg.draw.rect(G.screen, LIGHTYELLOW, pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT), 0)
