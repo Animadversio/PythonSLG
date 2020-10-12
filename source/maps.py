@@ -1,4 +1,4 @@
-
+"""High level design pseudo code """
 class Map:
     def __init__(self):
         self.height

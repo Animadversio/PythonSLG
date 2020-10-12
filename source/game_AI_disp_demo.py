@@ -1,6 +1,8 @@
 #%%
 import pygame as pg
-from source.util import Queue
+from source.util import Queue, Stack
+from random import choice
+from copy import copy, deepcopy
 pg.display.set_caption("SLG board")
 SCREEN = pg.display.set_mode((800,500)) # get screen
 screen = pg.display.get_surface()
@@ -62,13 +64,16 @@ SELECT_UNIT = 1
 SELECT_ACTION = 2
 SELECT_MOVTARGET = 3
 SELECT_ATTTARGET = 4
+SELECT_REMOVTARGET = 5
 class GameStateCtrl:
     def __init__(G):
         G.playerList = [1, 2]
         G.curPlayer = G.playerList[-1] # UIState starts from END_TURN so it will transition into first player
-        G.playerIter = playerIterator(G.playerList)
+        # G.playerIter = playerIterator(G.playerList)
         G.curTurn = 0
         G.screen = screen
+        G.mapH = screen.get_height() // TileW
+        G.mapW = screen.get_width() // TileW
         G.UIstate = END_TURN
         G.unitList = []
         G.curUnit = None
@@ -82,6 +87,25 @@ class GameStateCtrl:
         G.unitList.append(Unit(player=2, pos=(7, 5), cfg=ArcherCfg))
         G.unitList.append(Unit(player=2, pos=(5, 5), cfg=KnightCfg))
         G.unitList.append(Unit(player=2, pos=(8, 8), cfg=CatapultCfg))
+
+    def __deepcopy__(self, memodict={}):
+        newG = GameStateCtrl()
+        newG.__dict__['screen'] = self.__dict__['screen']
+        for key, vals in self.__dict__.items():
+            if key is 'screen': continue
+            newG.__dict__[key] = deepcopy(vals)
+        if self.curUnit is not None:
+            unitId = self.unitList.index(self.curUnit) # re-establish the link between the list and the reference to it.
+            newG.curUnit = newG.unitList[unitId]
+        return newG
+
+    def playerIterator(G):
+        """This is really handy function but cause much pain!"""
+        turn = 0
+        while True:
+            turn += 1
+            for player in G.playerList:  # and player is alive
+                yield player, turn
 
     def GUI_loop(G, GUI=True, csr_pos=(5, 6)):
         """This is less hierarchical, more linear programming style"""
@@ -114,7 +138,12 @@ class GameStateCtrl:
                 G.UIstate = END_TURN
 
             if G.UIstate is END_TURN:
-                nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
+                # nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
+                curIdx = G.playerList.index(G.curPlayer)
+                if curIdx == len(G.playerList) - 1:
+                    nextTurn, nextPlayer = G.curTurn + 1, G.playerList[0]
+                else:
+                    nextTurn, nextPlayer = G.curTurn, G.playerList[curIdx + 1]
                 # Do sth at turn over
                 for unit in G.unitList:
                     if unit.player is nextPlayer: unit.moved = False
@@ -135,10 +164,11 @@ class GameStateCtrl:
                     G.UIstate = SELECT_MOVTARGET
 
             elif G.UIstate == SELECT_MOVTARGET:
+                unit_pos = [unit.pos for unit in G.unitList]
                 obst_pos = G.getObstacleInRange(G.curUnit, None, )
                 movRange = G.getMovRange(G.curUnit.pos, G.curUnit.Movepnt, obst_pos)
                 G.drawLocation(movRange, (160, 180, 180))  # draw a list of location in one color
-                if K_confirm and (ci, cj) in movRange:
+                if K_confirm and (ci, cj) in movRange and (ci, cj) not in unit_pos:
                     print("Unit move (%d, %d) -> (%d, %d)"%(*G.curUnit.pos, ci, cj))
                     # move(unit, mov2i, mov2j)
                     ui_orig, uj_orig = G.curUnit.pos  # record this just in case user cancels
@@ -187,51 +217,119 @@ class GameStateCtrl:
             G.drawCsrLocation([(ci, cj)])  # draw a list of location in one color
             pg.display.update()
 
-    def action_exec(G, action_type, param=[]):
-        if action_type is "turnover":
-            G.endTurn()
-        if action_type is "select":
-
-        if action_type is "move":
-
-        if action_type is "attack":
-
-    def endTurn(G):
-        nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
+    def endTurn(G, show=True):
+        # nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
+        curIdx = G.playerList.index(G.curPlayer)
+        if curIdx == len(G.playerList) - 1:
+            nextTurn, nextPlayer = G.curTurn + 1, G.playerList[0]
+        else:
+            nextTurn, nextPlayer = G.curTurn, G.playerList[curIdx + 1]
         # Do sth at turn over
         for unit in G.unitList:
             if unit.player is nextPlayer: unit.moved = False
             if unit.player is G.curPlayer: unit.moved = True
+        if show: print("Turn Changed, Next player %d, Turn %d"%(nextPlayer, nextTurn))
         G.curPlayer, G.curTurn = nextPlayer, nextTurn
         G.UIstate = SELECT_UNIT
 
-    def selectUnit(G, csr):
+    def selectUnit(G, csr, show=True):
         posDict = {unit.pos: unit for unit in G.unitList}
         selectable_pos, selectable_unit = G.getSelectableUnit()  # unitList, curPlayer  # add condition for selectable
         if csr in selectable_pos:
-            print("Unit selected (%d, %d)" % (*csr, ))
+            if show: print("Unit selected (%d, %d)" % (*csr, ))
             G.curUnit = posDict[csr]  # unitList[unitId]
             G.UIstate = SELECT_MOVTARGET
         else:
             raise ValueError
 
-    def move(G, csr):
-        nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
-        # Do sth at turn over
-        for unit in G.unitList:
-            if unit.player is nextPlayer: unit.moved = False
-            if unit.player is G.curPlayer: unit.moved = True
-        G.curPlayer, G.curTurn = nextPlayer, nextTurn
+    def move(G, csr, show=True):
+        # ci, cj = csr
+        unit_pos = [unit.pos for unit in G.unitList]
+        obst_pos = G.getObstacleInRange(G.curUnit, None, )
+        movRange = G.getMovRange(G.curUnit.pos, G.curUnit.Movepnt, obst_pos)
+        if show: G.drawLocation(movRange, (160, 180, 180))  # draw a list of location in one color
+        if csr in movRange and csr not in unit_pos:
+            if show: print("Unit move (%d, %d) -> (%d, %d)"%(*G.curUnit.pos, *csr, ))
+            # move(unit, mov2i, mov2j)
+            ui_orig, uj_orig = G.curUnit.pos  # record this just in case user cancels
+            G.curUnit.pos = csr  # ui, uj
+            G.UIstate = SELECT_ATTTARGET
+        else:
+            raise ValueError
+
+    def attack(G, csr, show=True):
+        attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
+        targetPos, targetUnits = G.getTargetInRange(G.curUnit, attRange)
+        if show: G.drawLocation(attRange, (220, 180, 180))  # draw a list of location in one color
+        if show: G.drawCsrLocation(targetPos, (250, 130, 130))
+        ci, cj = csr
+        if (ci, cj) in targetPos:  # confirmed attack
+            if show: print("Unit @ (%d, %d) attack (%d, %d)" % (*G.curUnit.pos, ci, cj))
+            attacked = targetUnits[targetPos.index((ci, cj))]
+            # Real computation code for attack
+            harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
+            attacked.HP -= abs(harm)
+            if attacked.HP <= 0:
+                attacked.alive = False
+                G.unitList.pop(G.unitList.index(attacked))
+            attDis = abs(ci - G.curUnit.pos[0]) + abs(cj - G.curUnit.pos[1])
+            counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
+            if counterattack:
+                harm2 = int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence
+                G.curUnit.HP -= abs(harm2)
+                # FIXED: Currently Attacker and Attacked could Die together!
+                if G.curUnit.HP <= 0:
+                    G.curUnit.alive = False
+                    G.unitList.pop(G.unitList.index(G.curUnit))
+        if len(targetPos) == 0:
+            if show: print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
+        G.curUnit.moved = True
+        G.curUnit = None
         G.UIstate = SELECT_UNIT
 
-    def attack(G, targetPos):
-        nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
-        # Do sth at turn over
-        for unit in G.unitList:
-            if unit.player is nextPlayer: unit.moved = False
-            if unit.player is G.curPlayer: unit.moved = True
-        G.curPlayer, G.curTurn = nextPlayer, nextTurn
+    def stand(G, show=True):
+        if show: print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
+        G.curUnit.moved = True
+        G.curUnit = None
         G.UIstate = SELECT_UNIT
+
+    def getPossibleMoves(G, UIstate=None, curUnit=None, unitList=None):
+        if UIstate is None: UIstate = G.UIstate
+        if curUnit is None: curUnit = G.curUnit
+        if unitList is None: unitList = G.unitList
+        if UIstate is SELECT_UNIT:
+            selectable_pos, _ = G.getSelectableUnit(unitList=unitList)
+            if len(selectable_pos) > 0:
+                return [("select", [pos]) for pos in selectable_pos], SELECT_UNIT
+            else: # turn over is available if there is no unit to select
+                return [("turnover", [])], SELECT_UNIT
+        if UIstate is SELECT_MOVTARGET:
+            unit_pos = [unit.pos for unit in unitList]
+            obst_pos = G.getObstacleInRange(curUnit, None, unitList=unitList)
+            movRange = G.getMovRange(curUnit.pos, curUnit.Movepnt, obst_pos)
+            return [("move", [pos]) for pos in movRange if pos not in unit_pos], SELECT_ATTTARGET
+        if UIstate is SELECT_ATTTARGET:
+            attRange = G.getAttackRange(curUnit.pos, curUnit.AttackRng[0], curUnit.AttackRng[1])
+            targetPos, targetUnits = G.getTargetInRange(curUnit, attRange, unitList=unitList)
+            return [("stand", [])] + [("attack", [pos]) for pos in targetPos], SELECT_UNIT
+        if UIstate is SELECT_REMOVTARGET:
+            raise NotImplementedError
+        if UIstate is END_TURN:
+            return [("turnover", [])], SELECT_UNIT
+
+    def action_execute(self, action_type, param=[], clone=False, show=True):
+        G = deepcopy(self) if clone else self
+        if action_type is "turnover":
+            G.endTurn(show=show)
+        if action_type is "select":
+            G.selectUnit(param[0], show=show)
+        if action_type is "move":
+            G.move(param[0], show=show)
+        if action_type is "attack":
+            G.attack(param[0], show=show)
+        if action_type is "stand":
+            G.stand(show=show)
+        return G
 
     def drawBackground(G):
         pg.draw.rect(G.screen, LIGHTYELLOW, pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT), 0)
@@ -294,9 +392,9 @@ class GameStateCtrl:
             for dx, dy in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
                 xx, yy = x + dx, y + dy
                 nextmvp = curmvp - cost(xx, yy)
-                if nextmvp >= 0:
+                if nextmvp >= 0 and (0 <= xx < G.mapW) and (0 <= yy < G.mapH): # prune out of map positions
                     tovisit.push(((xx, yy), nextmvp))
-        return list(visited)
+        return list(visited)  # list(mvp)
 
     def getAttackRange(G, pos, LB, UB):
         # cost = lambda xx, yy: 1
@@ -350,29 +448,62 @@ class GameStateCtrl:
                 #targetUnit.append(unit)
         return targetPos# , targetUnit
 #%%
+# gamestr = GameStateCtrl()
+# actseq = []
+# # game.GUI_loop()
+# #%%
+# game = gamestr
+# for i in range(250):
+#     moves, nextUIstate = game.getPossibleMoves()
+#     move = choice(moves)
+#     game.action_execute(*move, clone=False) # game =
+#     actseq.append(move)
+# print([unit.pos for unit in game.unitList])
+# print([unit.player for unit in game.unitList])
+# #%%
+# game.GUI_loop()
+#%%
+# def DFS
 game = GameStateCtrl()
-game.GUI_loop()
+game.endTurn()
+movseq_col = Stack()
+movseq_col.push(([], game))
+whole_movseqs = []
+while not movseq_col.isEmpty():
+    actseq, curGame = movseq_col.pop()
+    moves, nextUIstate = curGame.getPossibleMoves()
+    # if len(movseq_col.list) > 500 or len(whole_movseqs) > 100:
+    #     break
+    #     print("%d traj found"%len(whole_movseqs))
+    for move in moves: #
+        next_actseq = copy(actseq)
+        next_actseq.append(move)
+        nextGame = curGame.action_execute(*move, clone=True, show=False)
+        if move[0] is "turnover":
+            whole_movseqs.append((next_actseq, nextGame))
+            print("%d traj found" % len(whole_movseqs))
+            continue
+        # move = choice(moves)
+        movseq_col.push((next_actseq, nextGame))
 
-
-
-
-
+# print([unit.pos for unit in game.unitList])
+# print([unit.player for unit in game.unitList])
 #%%
 # getSuccessor
-stepState = SELECT_UNIT
-
-if stepState is SELECT_UNIT:
-    selectable_pos, selectable_unit = getSelectableUnit(unitList, curPlayer)  # Possible moves
-    # Actuate Select
-    if len(selectable_pos) is 0:
-        nextState = END_TURN
-        curPlayer = next(playerIter)
-
-stepState = SELECT_MOVTARGET
-obst_pos = getObstacleInRange(curUnit, None, unitList)
-movRange = getMovRange(curUnit.pos, curUnit.Movepnt, obst_pos)
-# Actuate Move
-
-stepState = SELECT_ATTTARGET
-attRange = getAttackRange(curUnit.pos, curUnit.AttackRng[0], curUnit.AttackRng[1])
-targetPos, targetUnits = getTargetInRange(curUnit, attRange, unitList)
+# stepState = SELECT_UNIT
+#
+# if stepState is SELECT_UNIT:
+#     selectable_pos, selectable_unit = getSelectableUnit(unitList, curPlayer)  # Possible moves
+#     # Actuate Select
+#     if len(selectable_pos) is 0:
+#         nextState = END_TURN
+#         curPlayer = next(playerIter)
+#
+# stepState = SELECT_MOVTARGET
+# obst_pos = getObstacleInRange(curUnit, None, unitList)
+# movRange = getMovRange(curUnit.pos, curUnit.Movepnt, obst_pos)
+# # Actuate Move
+#
+# stepState = SELECT_ATTTARGET
+# attRange = getAttackRange(curUnit.pos, curUnit.AttackRng[0], curUnit.AttackRng[1])
+# targetPos, targetUnits = getTargetInRange(curUnit, attRange, unitList)

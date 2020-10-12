@@ -30,5 +30,10 @@ $ python main.py
 [x] CounterAttack criterion @Oct.10
 [x] Start More Unit Numerical design @Oct.10
 [x] Wrap up the Game loop with a class! @Oct.10
-[ ] Ability and Buff design
+[x] Recursive Successor function call. @Oct.10
+[x] Implement Baseline random legal action policy, trajectory sampling. @Oct.10
+[x] DFS List all strategy in one Turn(not good) @Oct.11
+[x] Deep copy for game state method.  @Oct.10
+[ ] Prune Search tree, making it less expansion
 [ ] Search Tree proposal
+[ ] Ability and Buff design
