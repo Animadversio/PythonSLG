@@ -36,7 +36,7 @@ $ python main.py
 [x] Deep copy for game state method.  @Oct.10
 [x] Primitive Reward or Evaluation Function for State x Action pair. @Oct.11
 [x] New Baseline, Greedy policy (in the space of Select+Move+Attack Maximize single step reward) @Oct.11
-[ ] Playback, or playing action sequence on the screen.  
+[x] Video Playback, or playing action sequence on the screen passively. @Oct.11
 [ ] Efficiency increase in search by improving the deep clone, or decrease the move range computation. 
 [ ] Prune Search tree, making it less expansion
 [ ] Search Tree proposal
