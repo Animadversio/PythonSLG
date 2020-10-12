@@ -525,7 +525,7 @@ for i in range(20):
     best_seq, best_state, best_rew = greedyPolicy(game)
     _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
 game.GUI_loop()
-#%%
+#%% This demonstrates Two Greedy agents playing with each other. 
 game = GameStateCtrl()
 game.endTurn()
 # This is the basic loop for playing an action sequence step by step
