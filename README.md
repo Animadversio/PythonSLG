@@ -34,6 +34,10 @@ $ python main.py
 [x] Implement Baseline random legal action policy, trajectory sampling. @Oct.10
 [x] DFS List all strategy in one Turn(not good) @Oct.11
 [x] Deep copy for game state method.  @Oct.10
+[x] Primitive Reward or Evaluation Function for State x Action pair. @Oct.11
+[x] New Baseline, Greedy policy (in the space of Select+Move+Attack Maximize single step reward) @Oct.11
+[ ] Playback, or playing action sequence on the screen.  
+[ ] Efficiency increase in search by improving the deep clone, or decrease the move range computation. 
 [ ] Prune Search tree, making it less expansion
 [ ] Search Tree proposal
 [ ] Ability and Buff design

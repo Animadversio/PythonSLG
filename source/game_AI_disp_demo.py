@@ -1,7 +1,8 @@
 #%%
 import pygame as pg
-from source.util import Queue, Stack
+from source.util import Queue, Stack, PriorityQueue
 from random import choice
+from time import time
 from copy import copy, deepcopy
 pg.display.set_caption("SLG board")
 SCREEN = pg.display.set_mode((800,500)) # get screen
@@ -49,7 +50,7 @@ SoldierCfg = {"Type": "Soldier", "HP": 100, "Attack": 55, "Defence": 10, "Movepn
 ArcherCfg = {"Type": "Archer", "HP": 100, "Attack": 45, "Defence":  5, "Movepnt": 4, "AttackRng": (2, 2), "Ability": [], "ExtraAct": [],}
 KnightCfg = {"Type": "Knight", "HP": 100, "Attack": 60, "Defence":  15, "Movepnt": 6, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
 CatapultCfg = {"Type": "Catapult", "HP": 100, "Attack": 70, "Defence":  5, "Movepnt": 3, "AttackRng": (2, 7), "Ability": [HEAVYMACHINE, ], "ExtraAct": [],}
-
+valueDict = {"Soldier": 100, "Archer": 150, "Knight":400, "Catapult": 700}
 #%%
 def playerIterator(playerList):
     turn = 0
@@ -257,7 +258,8 @@ class GameStateCtrl:
         else:
             raise ValueError
 
-    def attack(G, csr, show=True):
+    def attack(G, csr, show=True, reward=False):
+        unitValue = lambda unit: valueDict[unit.Type] # value function for each value. Should be learnable
         attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
         targetPos, targetUnits = G.getTargetInRange(G.curUnit, attRange)
         if show: G.drawLocation(attRange, (220, 180, 180))  # draw a list of location in one color
@@ -272,6 +274,7 @@ class GameStateCtrl:
             if attacked.HP <= 0:
                 attacked.alive = False
                 G.unitList.pop(G.unitList.index(attacked))
+            if reward: attackerRew = harm / 100.0 * unitValue(attacked) + (not attacked.alive) * unitValue(attacked)
             attDis = abs(ci - G.curUnit.pos[0]) + abs(cj - G.curUnit.pos[1])
             counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
             if counterattack:
@@ -281,11 +284,20 @@ class GameStateCtrl:
                 if G.curUnit.HP <= 0:
                     G.curUnit.alive = False
                     G.unitList.pop(G.unitList.index(G.curUnit))
+                if reward: attackerRew -= harm2 / 100.0 * unitValue(G.curUnit) + (not G.curUnit.alive) * unitValue(attacked)
         if len(targetPos) == 0:
             if show: print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
+            if reward: attackerRew = 0.0
         G.curUnit.moved = True
         G.curUnit = None
         G.UIstate = SELECT_UNIT
+        # compute the reward of this action for each player
+        if reward:
+            attackedRew = - attackerRew
+            rewards = [attackerRew, attackedRew] if attacked.player == 2 else [attackedRew, attackerRew]
+            return rewards
+        else:
+            return [0.0 for player in G.playerList]
 
     def stand(G, show=True):
         if show: print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
@@ -317,8 +329,9 @@ class GameStateCtrl:
         if UIstate is END_TURN:
             return [("turnover", [])], SELECT_UNIT
 
-    def action_execute(self, action_type, param=[], clone=False, show=True):
+    def action_execute(self, action_type, param=[], clone=False, show=True, reward=False):
         G = deepcopy(self) if clone else self
+        rewards = [0.0 for player in G.playerList]
         if action_type is "turnover":
             G.endTurn(show=show)
         if action_type is "select":
@@ -326,10 +339,28 @@ class GameStateCtrl:
         if action_type is "move":
             G.move(param[0], show=show)
         if action_type is "attack":
-            G.attack(param[0], show=show)
+            rewards = G.attack(param[0], show=show, reward=reward)
         if action_type is "stand":
             G.stand(show=show)
-        return G
+        return G, rewards
+
+    def action_seq_execute(self, actseq, clone=False, show=True, reward=False):
+        G = deepcopy(self) if clone else self
+        cum_rewards = [0.0 for player in G.playerList]
+        for action_type, param in actseq:
+            rewards = [0.0 for player in G.playerList]
+            if action_type is "turnover":
+                G.endTurn(show=show)
+            if action_type is "select":
+                G.selectUnit(param[0], show=show)
+            if action_type is "move":
+                G.move(param[0], show=show)
+            if action_type is "attack":
+                rewards = G.attack(param[0], show=show, reward=reward)
+            if action_type is "stand":
+                G.stand(show=show)
+            cum_rewards = [cum_rewards[i] + rewards[i] for i, _ in enumerate(G.playerList)]
+        return G, cum_rewards
 
     def drawBackground(G):
         pg.draw.rect(G.screen, LIGHTYELLOW, pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT), 0)
@@ -463,14 +494,64 @@ class GameStateCtrl:
 # #%%
 # game.GUI_loop()
 #%%
-# def DFS
+def greedyPolicy(game):
+    T0 = time()
+    movseq_col = Stack()
+    movseq_col.push(([], 0, game))
+    whole_movseqs = PriorityQueue()  # [] #
+    while not movseq_col.isEmpty():
+        actseq, cumrew, curGame = movseq_col.pop()
+        moves, nextUIstate = curGame.getPossibleMoves()
+        for move in moves:  #
+            next_actseq = copy(actseq)
+            next_actseq.append(move)
+            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True)
+            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1] # use the reward for this player
+            if move[0] is "attack" or move[0] is "stand":
+                # whole_movseqs.append((next_actseq, nextGame, nextcumrew))
+                # print("%d traj found" % len(whole_movseqs))
+                whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew)
+                # print("%d traj found" % len(whole_movseqs.heap))
+                continue
+            # move = choice(moves)
+            movseq_col.push((next_actseq, nextcumrew, nextGame))
+    best_seq, best_state, best_rew = whole_movseqs.pop()
+    print("DFS finished %.2f sec, best rew %d" % (time() - T0, best_rew))
+    return best_seq, best_state, best_rew
+
 game = GameStateCtrl()
 game.endTurn()
+for i in range(20):
+    best_seq, best_state, best_rew = greedyPolicy(game)
+    _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+game.GUI_loop()
+#%%
+game = GameStateCtrl()
+game.endTurn()
+# This is the basic loop for playing an action sequence step by step
+Exitflag = False
+while not Exitflag:
+    for event in pg.event.get():
+        if event.type == pg.QUIT:
+            Exitflag = True
+        if event.type == pg.KEYDOWN:
+            if event.key == pg.K_TAB:
+                best_seq, best_state, best_rew = greedyPolicy(game)
+                _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+    game.drawBackground()
+    game.drawUnitList()
+    pg.display.update()
+
+#%% DFS search engine
+# def DFS, even a single round has > 3287649 possible action sequences as defined here.
+game = GameStateCtrl()
+game.endTurn()
+T0 = time()
 movseq_col = Stack()
-movseq_col.push(([], game))
-whole_movseqs = []
+movseq_col.push(([], 0, game))
+whole_movseqs = PriorityQueue() # [] #
 while not movseq_col.isEmpty():
-    actseq, curGame = movseq_col.pop()
+    actseq, cumrew, curGame = movseq_col.pop()
     moves, nextUIstate = curGame.getPossibleMoves()
     # if len(movseq_col.list) > 500 or len(whole_movseqs) > 100:
     #     break
@@ -478,14 +559,17 @@ while not movseq_col.isEmpty():
     for move in moves: #
         next_actseq = copy(actseq)
         next_actseq.append(move)
-        nextGame = curGame.action_execute(*move, clone=True, show=False)
-        if move[0] is "turnover":
-            whole_movseqs.append((next_actseq, nextGame))
-            print("%d traj found" % len(whole_movseqs))
+        nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True)
+        nextcumrew = cumrew + nextrewards[curGame.curPlayer-1]
+        if move[0] is "attack" or move[0] is "stand":
+            # whole_movseqs.append((next_actseq, nextGame, nextcumrew))
+            # print("%d traj found" % len(whole_movseqs))
+            whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew)
+            print("%d traj found" % len(whole_movseqs.heap))
             continue
         # move = choice(moves)
-        movseq_col.push((next_actseq, nextGame))
-
+        movseq_col.push((next_actseq, nextcumrew, nextGame))
+print("%.2f sec" % (time() - T0)) # selecting and moving one of the units has 192 different move seqs. Finished in .25sec
 # print([unit.pos for unit in game.unitList])
 # print([unit.player for unit in game.unitList])
 #%%
