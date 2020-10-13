@@ -93,19 +93,24 @@ class GameStateCtrl:
         G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
         G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
         G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
+        G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
         G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
+        G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
         G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
         G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
-        G.unitList.append(Unit(player=1, pos=(4, 2), cfg=StormSummonerCfg))
+        G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
         G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
+        G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
         G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
         G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
         G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
         G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
+        G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
         G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
         G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
-        G.unitList.append(Unit(player=2, pos=(10, 4), cfg=StormSummonerCfg))
+        G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
         G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
+        G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
 
     def __deepcopy__(self, memodict={}):
         newG = GameStateCtrl()
@@ -793,10 +798,18 @@ def threat_general(game, curPlayer):
     bestenemy_seq, bestenemy_state, bestenemy_rew = greedyPolicy(hypo_game, show=False)
     return bestenemy_rew, bestenemy_seq
 
+def computeHPloss(curGame, nextGame, targ_pos):
+    poslist = [unit.pos for unit in curGame.unitList]
+    nextposlist = [unit.pos for unit in nextGame.unitList]
+    HP = curGame.unitList[poslist.index(targ_pos)].HP if targ_pos in poslist else 0
+    HPnext = nextGame.unitList[nextposlist.index(targ_pos)].HP if targ_pos in nextposlist else 0
+    HPloss = HPnext - HP
+    return HPloss
+
 def ThreatElimPolicy(game, gamma=0.9, perm=True):
     """Search the action space of selection, move, attack"""
     T0 = time()
-    # threat_bsl, _ = threat_general(game, game.curPlayer)
+    threat_bsl, _ = threat_general(game, game.curPlayer)
     targetPos, targetUnit = game.getAllEnemyUnit()
     threat_dict = {}
     for pos in targetPos:
@@ -819,10 +832,22 @@ def ThreatElimPolicy(game, gamma=0.9, perm=True):
             if move[0] is "attack":
                 targ_pos = move[1][0]
                 # threat_bef, _ = threat_pos(curGame, targ_pos)
+                # threat_bef = threat_dict[targ_pos]
+                # threat_aft, _ = threat_pos(nextGame, targ_pos)
+                # thr_elim_val = threat_bef - threat_aft # This is more accurate MC method
                 threat_bef = threat_dict[targ_pos]
-                threat_aft, _ = threat_pos(nextGame, targ_pos)
-                thr_elim_val = threat_bef - threat_aft
-                print("Threat Value reduced by %.1f (@%d, %d)" % (thr_elim_val, *targ_pos))
+                harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                thr_elim_val += threat_bef * harmPercent  # This is less accurate
+            if move[0] is "AOE":
+                for targ_pos in move[1][1]:  # targetPosList for AOE attack
+                    threat_bef = threat_dict[targ_pos]
+                    harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                    thr_elim_val += threat_bef * harmPercent
+            print("Threat Value reduced by %.1f" % (thr_elim_val))
+            # if move[0] in ["AOE","attack"]:
+            #     threat_all_aft, _ = threat_general(curGame, curGame.curPlayer)
+            #     thr_elim_val = threat_bsl - threat_all_aft
+            #     print("Threat Value reduced by %.1f" % (thr_elim_val, ))
             if move[0] in ["AOE","attack","stand","turnover"]:
                 whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew - thr_elim_val * gamma)
                 continue
@@ -847,7 +872,7 @@ game = GameStateCtrl()
 game.GUI_loop()
 #%% This demonstrates Two Threat Elimination agents playing with each other.
 game = GameStateCtrl()
-game.GUI_loop()
+# game.GUI_loop()
 # game.endTurn()
 # This is the basic loop for playing an action sequence step by step
 Exitflag = False

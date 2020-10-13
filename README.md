@@ -45,6 +45,7 @@ $ python main.py
 [x] Updata GUI loop to support Action selection @Oct.12
 [x] New GUI display for AOE ability!  @Oct.12
 [x] Debug the AOE attack random die. @Oct.13
+[x] Scalable Approximate Threat Elimination Algor @Oct.13
 [ ] Ability and Buff design, Heal
 [ ] Ability and Buff design, Summon?
 [ ] Efficiency increase in search by improving the deep clone.
