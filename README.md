@@ -37,7 +37,16 @@ $ python main.py
 [x] Primitive Reward or Evaluation Function for State x Action pair. @Oct.11
 [x] New Baseline, Greedy policy (in the space of Select+Move+Attack Maximize single step reward) @Oct.11
 [x] Video Playback, or playing action sequence on the screen passively. @Oct.11
-[ ] Efficiency increase in search by improving the deep clone, or decrease the move range computation. 
-[ ] Prune Search tree, making it less expansion
+[x] Recursive or MiniMax Quality definition! Threat Elimination Strategy @Oct.12
+[x] Add unit, StoneMan, StormSummoner @Oct.12
+[x] Debug Cannot stay in same location problem @Oct.12
+[x] Ability and Buff design, StormSummoner. IMplement AOE attack! @Oct.12
+[x] Speed up by disable legality check! or decrease the move range computation.  @Oct.12
+[x] Updata GUI loop to support Action selection @Oct.12
+[x] New GUI display for AOE ability!  @Oct.12
+[x] Debug the AOE attack random die. @Oct.13
+[ ] Ability and Buff design, Heal
+[ ] Ability and Buff design, Summon?
+[ ] Efficiency increase in search by improving the deep clone.
+[ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 [ ] Search Tree proposal
-[ ] Ability and Buff design

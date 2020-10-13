@@ -42,15 +42,25 @@ class Unit:
             self.Movepnt = 4
             self.AttackRng = (1, 2)
             self.Ability = []
+            self.ExtraAct = []
             # self.exp
             # self.level
+
+
 # List of Abilities
 HEAVYMACHINE = 6
+STORM = 7
+HEAL = 8
+SUMMON = 9
 SoldierCfg = {"Type": "Soldier", "HP": 100, "Attack": 55, "Defence": 10, "Movepnt": 4, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
 ArcherCfg = {"Type": "Archer", "HP": 100, "Attack": 45, "Defence":  5, "Movepnt": 4, "AttackRng": (2, 2), "Ability": [], "ExtraAct": [],}
 KnightCfg = {"Type": "Knight", "HP": 100, "Attack": 60, "Defence":  15, "Movepnt": 6, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
-CatapultCfg = {"Type": "Catapult", "HP": 100, "Attack": 70, "Defence":  5, "Movepnt": 3, "AttackRng": (2, 7), "Ability": [HEAVYMACHINE, ], "ExtraAct": [],}
-valueDict = {"Soldier": 100, "Archer": 150, "Knight":400, "Catapult": 700}
+CatapultCfg = {"Type": "Catapult", "HP": 100, "Attack": 70, "Defence":  5, "Movepnt": 3, "AttackRng": (3, 7), "Ability": [HEAVYMACHINE, ], "ExtraAct": [], }
+StoneManCfg = {"Type": "StoneMan", "HP": 100, "Attack": 60, "Defence":  40, "Movepnt": 4, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
+StormSummonerCfg = {"Type": "StormSummoner", "HP": 100, "Attack": 30, "Defence":  5, "Movepnt": 4, "AttackRng": (2, 7), "Ability": [], "ExtraAct": [STORM], }
+
+valueDict = {"Soldier": 100, "Archer": 150, "Knight": 400, "Catapult": 700,
+             "StoneMan": 600, "StormSummoner": 600}
 #%%
 def playerIterator(playerList):
     turn = 0
@@ -66,6 +76,8 @@ SELECT_ACTION = 2
 SELECT_MOVTARGET = 3
 SELECT_ATTTARGET = 4
 SELECT_REMOVTARGET = 5
+SELECT_AOETARGET = 6
+SELECT_HEALTARGET = 7
 class GameStateCtrl:
     def __init__(G):
         G.playerList = [1, 2]
@@ -78,16 +90,22 @@ class GameStateCtrl:
         G.UIstate = END_TURN
         G.unitList = []
         G.curUnit = None
-        G.unitList.append(Unit(player=1, pos=(2, 2), cfg=SoldierCfg))
         G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
+        G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
+        G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
         G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
-        G.unitList.append(Unit(player=1, pos=(3, 4), cfg=KnightCfg))
-        G.unitList.append(Unit(player=1, pos=(1, 1), cfg=CatapultCfg))
-        G.unitList.append(Unit(player=2, pos=(5, 8), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=2, pos=(6, 8), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=2, pos=(7, 5), cfg=ArcherCfg))
-        G.unitList.append(Unit(player=2, pos=(5, 5), cfg=KnightCfg))
-        G.unitList.append(Unit(player=2, pos=(8, 8), cfg=CatapultCfg))
+        G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
+        G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
+        G.unitList.append(Unit(player=1, pos=(4, 2), cfg=StormSummonerCfg))
+        G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
+        G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
+        G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
+        G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
+        G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
+        G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
+        G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
+        G.unitList.append(Unit(player=2, pos=(10, 4), cfg=StormSummonerCfg))
+        G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
 
     def __deepcopy__(self, memodict={}):
         newG = GameStateCtrl()
@@ -112,11 +130,16 @@ class GameStateCtrl:
         """This is less hierarchical, more linear programming style"""
         ci, cj = csr_pos # csr is a GUI concept not a gameState
         Exitflag = False
+
+        button1 = pg.Rect(105, 100, 40, 25)
+        button2 = pg.Rect(105, 125, 40, 25)
         while not Exitflag:
             # Input Processor
             K_confirm = False
             K_cancel = False
             K_Turnover = False
+            B_A = False
+            B_B = False
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     Exitflag = True
@@ -125,6 +148,8 @@ class GameStateCtrl:
                     ci, cj = mouseX // TileW, mouseY // TileW
                     if dbclock.tick() < DOUBLECLICKTIME:
                         K_confirm = True
+                    if button1.collidepoint((mouseX, mouseY)): B_A = True
+                    if button2.collidepoint((mouseX, mouseY)): B_B = True
                 if event.type == pg.KEYDOWN:
                     if event.key == pg.K_UP: cj -= 1
                     if event.key == pg.K_DOWN: cj += 1
@@ -133,6 +158,8 @@ class GameStateCtrl:
                     if event.key == pg.K_SPACE: K_confirm = True
                     if event.key == pg.K_ESCAPE: K_cancel = True
                     if event.key == pg.K_TAB: K_Turnover = True
+                    if event.key == pg.K_1: B_A = True
+                    if event.key == pg.K_2: B_B = True
             G.drawBackground()
             # drawTerrain(screen, gameState)
             if K_Turnover:
@@ -165,7 +192,7 @@ class GameStateCtrl:
                     G.UIstate = SELECT_MOVTARGET
 
             elif G.UIstate == SELECT_MOVTARGET:
-                unit_pos = [unit.pos for unit in G.unitList]
+                unit_pos = [unit.pos for unit in G.unitList if unit is not G.curUnit]
                 obst_pos = G.getObstacleInRange(G.curUnit, None, )
                 movRange = G.getMovRange(G.curUnit.pos, G.curUnit.Movepnt, obst_pos)
                 G.drawLocation(movRange, (160, 180, 180))  # draw a list of location in one color
@@ -173,11 +200,42 @@ class GameStateCtrl:
                     print("Unit move (%d, %d) -> (%d, %d)"%(*G.curUnit.pos, ci, cj))
                     # move(unit, mov2i, mov2j)
                     ui_orig, uj_orig = G.curUnit.pos  # record this just in case user cancels
-                    G.curUnit.pos = ci, cj  # ui, uj
-                    G.UIstate = SELECT_ATTTARGET
+                    G.move((ci, cj), show=True, checklegal=True)
+                    # G.curUnit.pos = ci, cj  # ui, uj
+                    # G.UIstate = SELECT_ATTTARGET
                     # UIstate = SELECT_ACTION
                 if K_cancel:
                     G.UIstate = SELECT_UNIT
+
+            elif G.UIstate == SELECT_ACTION:
+                button1 = pg.Rect(55, 50, 90, 30)
+                button2 = pg.Rect(55, 85, 90, 30)
+                pg.draw.rect(screen, [220, 200, 200], button1)
+                pg.draw.rect(screen, [220, 200, 200], button2)
+                screen.blit(font.render('STORM', True, [0,0,0]), (55, 60))
+                screen.blit(font.render('Attack', True, [0,0,0]), (55, 95))
+                if B_A:
+                    G.UIstate = SELECT_AOETARGET
+                if B_B:
+                    G.UIstate = SELECT_ATTTARGET
+                if K_cancel:
+                    G.curUnit.pos = ui_orig, uj_orig
+                    G.UIstate = SELECT_MOVTARGET
+
+            elif G.UIstate == SELECT_AOETARGET:
+                attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
+                centRange, targetPosList = G.getAOETargetInRange(G.curUnit, attRange, unitList=G.unitList, radius=1)
+                targetUnion = list(set().union(*targetPosList))
+                G.drawLocation(centRange, (220, 180, 180))  # draw a list of location in one color
+                G.drawCircTarget(targetUnion, (240, 130, 130))
+                if K_confirm and (ci, cj) in centRange:
+                    posList = targetPosList[centRange.index((ci, cj))]
+                    print("Unit (%d, %d) Attack AOE (%d, %d)" % (*G.curUnit.pos, ci, cj))
+                    print(posList)
+                    G.attack_AOE((ci, cj), posList, show=True, reward=True, checklegal=True)
+
+                if K_cancel:
+                    G.UIstate = SELECT_ACTION
 
             elif G.UIstate == SELECT_ATTTARGET:
                 attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
@@ -243,22 +301,26 @@ class GameStateCtrl:
         else:
             raise ValueError
 
-    def move(G, csr, show=True):
+    def move(G, csr, show=True, checklegal=True):
         # ci, cj = csr
-        unit_pos = [unit.pos for unit in G.unitList]
-        obst_pos = G.getObstacleInRange(G.curUnit, None, )
-        movRange = G.getMovRange(G.curUnit.pos, G.curUnit.Movepnt, obst_pos)
-        if show: G.drawLocation(movRange, (160, 180, 180))  # draw a list of location in one color
-        if csr in movRange and csr not in unit_pos:
+        if checklegal:
+            unit_pos = [unit.pos for unit in G.unitList if unit is not G.curUnit]
+            obst_pos = G.getObstacleInRange(G.curUnit, None, )
+            movRange = G.getMovRange(G.curUnit.pos, G.curUnit.Movepnt, obst_pos)
+            if show: G.drawLocation(movRange, (160, 180, 180))  # draw a list of location in one color
+        if not checklegal or (checklegal and csr in movRange and csr not in unit_pos):
             if show: print("Unit move (%d, %d) -> (%d, %d)"%(*G.curUnit.pos, *csr, ))
             # move(unit, mov2i, mov2j)
             ui_orig, uj_orig = G.curUnit.pos  # record this just in case user cancels
             G.curUnit.pos = csr  # ui, uj
-            G.UIstate = SELECT_ATTTARGET
+            if len(G.curUnit.ExtraAct) == 0:
+                G.UIstate = SELECT_ATTTARGET
+            else:
+                G.UIstate = SELECT_ACTION
         else:
             raise ValueError
 
-    def attack(G, csr, show=True, reward=False):
+    def attack(G, csr, show=True, reward=False, checklegal=True):
         unitValue = lambda unit: valueDict[unit.Type] # value function for each value. Should be learnable
         attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
         targetPos, targetUnits = G.getTargetInRange(G.curUnit, attRange)
@@ -299,6 +361,38 @@ class GameStateCtrl:
         else:
             return [0.0 for player in G.playerList]
 
+    def attack_AOE(G, centPos, posList, show=True, reward=False, checklegal=False):
+        unitValue = lambda unit: valueDict[unit.Type]  # value function for each value. Should be learnable
+        # attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
+        # targetPos, targetUnits = G.getTargetInRange(G.curUnit, attRange)
+        # if show: G.drawLocation(attRange, (220, 180, 180))  # draw a list of location in one color
+        if show: G.drawCsrLocation(posList, (250, 130, 130))
+        unit_pos = [unit.pos for unit in G.unitList]
+        if reward:  attackerRew = 0  # cumulate reward for each attacked enemy
+        if show: print("Unit @ (%d, %d) AOE attack :" % (*G.curUnit.pos,), posList)
+        for targpos in posList:  # confirmed attack
+            attacked = G.unitList[unit_pos.index(targpos)]#targetUnits[targetPos.index((ci, cj))]
+            # Real computation code for attack
+            # harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
+            harm = G.curUnit.Attack - attacked.Defence  # AOE Magic don't suffer from HP loss #FIXME
+            isEnemy = 1 if G.curUnit.player != attacked.player else -1 # AOE can harm friemd team!
+            attacked.HP -= abs(harm)
+            if attacked.HP <= 0:
+                attacked.alive = False
+                G.unitList.pop(G.unitList.index(attacked))
+                unit_pos = [unit.pos for unit in G.unitList]
+            if reward: attackerRew += isEnemy * (harm / 100.0 * unitValue(attacked) + (not attacked.alive) * unitValue(attacked))
+        G.curUnit.moved = True
+        G.curUnit = None
+        G.UIstate = SELECT_UNIT
+        # compute the reward of this action for each player
+        if reward:
+            attackedRew = - attackerRew
+            rewards = [attackerRew, attackedRew] if attacked.player == 2 else [attackedRew, attackerRew]
+            return rewards
+        else:
+            return [0.0 for player in G.playerList]
+
     def stand(G, show=True):
         if show: print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
         G.curUnit.moved = True
@@ -316,10 +410,21 @@ class GameStateCtrl:
             else: # turn over is available if there is no unit to select
                 return [("turnover", [])], SELECT_UNIT
         if UIstate is SELECT_MOVTARGET:
-            unit_pos = [unit.pos for unit in unitList]
+            unit_pos = [unit.pos for unit in unitList if unit is not curUnit] # other unit's position. Or you cannot stay put
             obst_pos = G.getObstacleInRange(curUnit, None, unitList=unitList)
             movRange = G.getMovRange(curUnit.pos, curUnit.Movepnt, obst_pos)
             return [("move", [pos]) for pos in movRange if pos not in unit_pos], SELECT_ATTTARGET
+        if UIstate is SELECT_ACTION:
+            actions = [("useAttack", [])]
+            if STORM in curUnit.ExtraAct:
+                actions.append(("useStorm", []))
+            if HEAL in curUnit.ExtraAct:
+                actions.append(("useHeal", []))
+            return actions, (SELECT_ATTTARGET, SELECT_AOETARGET)
+        if UIstate is SELECT_AOETARGET:
+            attRange = G.getAttackRange(curUnit.pos, curUnit.AttackRng[0], curUnit.AttackRng[1])
+            centPosList, targetPosList = G.getAOETargetInRange(curUnit, attRange, unitList=unitList, radius=1)
+            return [("stand", [])] + [("AOE", [cent, posList]) for cent, posList in zip(centPosList, targetPosList)], SELECT_UNIT
         if UIstate is SELECT_ATTTARGET:
             attRange = G.getAttackRange(curUnit.pos, curUnit.AttackRng[0], curUnit.AttackRng[1])
             targetPos, targetUnits = G.getTargetInRange(curUnit, attRange, unitList=unitList)
@@ -329,7 +434,7 @@ class GameStateCtrl:
         if UIstate is END_TURN:
             return [("turnover", [])], SELECT_UNIT
 
-    def action_execute(self, action_type, param=[], clone=False, show=True, reward=False):
+    def action_execute(self, action_type, param=[], clone=False, show=True, reward=False, checklegal=True):
         G = deepcopy(self) if clone else self
         rewards = [0.0 for player in G.playerList]
         if action_type is "turnover":
@@ -337,14 +442,23 @@ class GameStateCtrl:
         if action_type is "select":
             G.selectUnit(param[0], show=show)
         if action_type is "move":
-            G.move(param[0], show=show)
+            G.move(param[0], show=show, checklegal=checklegal)
+        if action_type is "useAttack":
+            G.UIstate = SELECT_ATTTARGET
+        if action_type is "useStorm":
+            G.UIstate = SELECT_AOETARGET
+        if action_type is "useHeal":
+            G.UIstate = SELECT_HEALTARGET
         if action_type is "attack":
-            rewards = G.attack(param[0], show=show, reward=reward)
+            rewards = G.attack(param[0], show=show, reward=reward, checklegal=checklegal) # attack will generate real rewards!
+        if action_type is "AOE":
+            rewards = G.attack_AOE(param[0], param[1], show=show, reward=reward, checklegal=checklegal) # attack will generate real rewards!
         if action_type is "stand":
             G.stand(show=show)
         return G, rewards
 
-    def action_seq_execute(self, actseq, clone=False, show=True, reward=False):
+    def action_seq_execute(self, actseq, clone=False, show=True, reward=False, checklegal=True):
+        """Sequential version of `action_execute`"""
         G = deepcopy(self) if clone else self
         cum_rewards = [0.0 for player in G.playerList]
         for action_type, param in actseq:
@@ -354,9 +468,17 @@ class GameStateCtrl:
             if action_type is "select":
                 G.selectUnit(param[0], show=show)
             if action_type is "move":
-                G.move(param[0], show=show)
-            if action_type is "attack":
-                rewards = G.attack(param[0], show=show, reward=reward)
+                G.move(param[0], show=show, checklegal=checklegal)
+            if action_type is "useAttack":
+                G.UIstate = SELECT_ATTTARGET
+            if action_type is "useStorm":
+                G.UIstate = SELECT_AOETARGET
+            if action_type is "useHeal":
+                G.UIstate = SELECT_HEALTARGET
+            if action_type is "attack":  # attack will generate real rewards!
+                rewards = G.attack(param[0], show=show, reward=reward, checklegal=checklegal)
+            if action_type is "AOE":  # attack will generate real rewards!
+                rewards = G.attack_AOE(param[0], param[1], show=show, reward=reward, checklegal=checklegal)
             if action_type is "stand":
                 G.stand(show=show)
             cum_rewards = [cum_rewards[i] + rewards[i] for i, _ in enumerate(G.playerList)]
@@ -373,16 +495,16 @@ class GameStateCtrl:
             pg.draw.rect(G.screen, color,
                  pg.Rect(i * TileW + Margin, j * TileW + Margin, TileW - 2*Margin, TileW - 2*Margin))
 
+    def drawCircTarget(G, pos_list, color=(150, 200, 200)):
+        for i, j in pos_list:
+            pg.draw.circle(G.screen, color, (int((i+1/2) * TileW), int((j+1/2) * TileW)),
+                               (TileW - 2*Margin) // 2 )
+
     def drawCsrLocation(G, pos_list, color=(150, 200, 200), CsrWidth = CsrWidth):
         """Just an empty square indicating the position of cursor"""
         for i, j in pos_list:
             pg.draw.rect(G.screen, color,
                  pg.Rect(i * TileW + Margin + CsrWidth/2, j * TileW + Margin + CsrWidth/2, TileW - 2*Margin - CsrWidth, TileW - 2*Margin - CsrWidth), CsrWidth)
-
-    def drawUnits(G, pos_list, color=(20, 20, 20)):
-        for i, j in pos_list:
-            pg.draw.rect(G.screen, color,
-                 pg.Rect(i * TileW + UMargin/2, j * TileW + UMargin/2, TileW - UMargin, TileW - UMargin))
 
     def drawUnitList(G, UnitList=None, ):
         """# Really draw unit lists!Represent different types of units with shapes"""
@@ -405,6 +527,18 @@ class GameStateCtrl:
                 pg.draw.polygon(G.screen, playerColor[unit.player], [(int((i  ) * TileW), int((j ) * TileW)),
                                                                     (int((i + 1 ) * TileW), int((j ) * TileW)),
                                                                     (int((i + 1 / 2) * TileW), int((j + 1) * TileW)), ] )
+            elif unit.Type is "StoneMan":
+                pg.draw.polygon(G.screen, playerColor[unit.player], [(int((i + 1) * TileW), int((j + 2 / 4) * TileW)),
+                                                                     (int((i + 3 / 4) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i + 1 / 4) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i) * TileW), int((j + 2 / 4) * TileW)),
+                                                                    (int((i + 1 / 4) * TileW), int((j + 3 / 4) * TileW)),
+                                                                    (int((i + 3 / 4) * TileW), int((j + 3 / 4) * TileW)), ] )
+            elif unit.Type is "StormSummoner":
+                pg.draw.polygon(G.screen, playerColor[unit.player], [(int((i) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i + 1) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i + 3 / 4) * TileW), int((j + 3 / 4) * TileW)),
+                                                                    (int((i + 1 / 4) * TileW), int((j + 3 / 4) * TileW)), ] )
             HPcolor = (160, 20, 20) if unit.moved else (20, 160, 20)
             img = font.render('%d' % unit.HP, True, HPcolor)
             screen.blit(img, ((i + 1) * TileW - 28, (j +1) * TileW - 18))
@@ -427,26 +561,33 @@ class GameStateCtrl:
                     tovisit.push(((xx, yy), nextmvp))
         return list(visited)  # list(mvp)
 
-    def getAttackRange(G, pos, LB, UB):
+    def getAttackRange(G, pos, LB, UB):  # FIXME: BE MORE EFFICIENT
         # cost = lambda xx, yy: 1
-        tovisit = Queue()
-        tovisit.push((pos, 0))
-        visited = set()
-        poslist = []
-        while not tovisit.isEmpty():
-            curpos, curdis = tovisit.pop()
-            visited.add(curpos)
-            x, y = curpos
-            for dx, dy in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
-                xx, yy = x + dx, y + dy
-                if (xx, yy) in visited:
-                    continue
-                nextdis = curdis + 1
-                if nextdis <= UB:
-                    tovisit.push(((xx, yy), nextdis))
-                    if nextdis >= LB:
-                        poslist.append((xx, yy))
-        return poslist
+        x, y = pos
+        poslist = set()
+        for dx in range(-UB, UB + 1):
+            for dy in range(-UB + abs(dx), min(- LB + abs(dx) + 1, 0)):
+                poslist.add((x + dx, y + dy))
+            for dy in range(max(LB - abs(dx), 0), UB - abs(dx) + 1):
+                poslist.add((x + dx, y + dy))
+        return list(poslist)
+        # tovisit = Queue()
+        # tovisit.push((pos, 0))
+        # visited = set()
+        # while not tovisit.isEmpty():
+        #     curpos, curdis = tovisit.pop()
+        #     visited.add(curpos)
+        #     x, y = curpos
+        #     for dx, dy in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
+        #         xx, yy = x + dx, y + dy
+        #         if (xx, yy) in visited:
+        #             continue
+        #         nextdis = curdis + 1
+        #         if nextdis <= UB:
+        #             tovisit.push(((xx, yy), nextdis))
+        #             if nextdis >= LB:
+        #                 poslist.append((xx, yy))
+        # return poslist
 
     def getSelectableUnit(G, unitList=None, curPlayer=None):
         if unitList is None: unitList = G.unitList
@@ -460,11 +601,50 @@ class GameStateCtrl:
         return selectablePos, selectableUnit
 
     def getTargetInRange(G, curUnit, attRange, unitList=None):
+        """attRange can be None to indicate all opponent units"""
         if unitList is None: unitList = G.unitList
         targetPos = []
         targetUnit = []
         for unit in unitList:
             if unit.player is not curUnit.player and (attRange is None or unit.pos in attRange):
+                targetPos.append(unit.pos)
+                targetUnit.append(unit)
+        return targetPos, targetUnit
+
+    def getDxDyList(G, radius):
+        dxdy = []
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius+abs(dx), radius-abs(dx)+1):
+                dxdy.append((dx, dy))
+        return dxdy
+
+    def getAOETargetInRange(G, curUnit, attRange, unitList=None, radius=1):
+        if unitList is None: unitList = G.unitList
+        attRange = set(attRange)
+        augAttRange = G.getAttackRange(curUnit.pos, curUnit.AttackRng[0] - radius, curUnit.AttackRng[1] + radius)
+        targetPos, targetUnit = G.getTargetInRange(curUnit, augAttRange, unitList)
+        centerTargetDict = dict()
+        for unitpos, unit in zip(targetPos, targetUnit):
+            x, y = unitpos
+            for dx, dy in G.getDxDyList(radius):
+                xx, yy = x + dx, y + dy
+                if (xx, yy) in attRange:
+                    if (xx, yy) in centerTargetDict:
+                        centerTargetDict[(xx, yy)].append(unitpos)
+                    else:
+                        centerTargetDict[(xx, yy)] = [unitpos]
+
+        centerPos = list(centerTargetDict.keys())
+        targetPosList = [centerTargetDict[cent] for cent in centerPos]
+        return centerPos, targetPosList, # targetUnitList
+
+    def getAllEnemyUnit(G, unitList=None):
+        """attRange can be None to indicate all opponent units"""
+        if unitList is None: unitList = G.unitList
+        targetPos = []
+        targetUnit = []
+        for unit in unitList:
+            if unit.player is not G.curPlayer:
                 targetPos.append(unit.pos)
                 targetUnit.append(unit)
         return targetPos, targetUnit
@@ -478,7 +658,53 @@ class GameStateCtrl:
                 targetPos.append(unit.pos)
                 #targetUnit.append(unit)
         return targetPos# , targetUnit
+
 #%%
+game = GameStateCtrl()
+game.GUI_loop()
+#%%
+def randomPolicy(game, oneunit=False):
+    T0 = time()
+    actseq, cumrew, curGame = [], 0, deepcopy(game)
+    while True:
+        moves, nextUIstate = curGame.getPossibleMoves()
+        move = choice(moves)
+        actseq.append(move)
+        curGame, nextrewards = curGame.action_execute(*move, clone=False, show=False, reward=True)
+        cumrew += nextrewards[curGame.curPlayer - 1]
+        if oneunit and (move[0] is "attack" or move[0] is "stand"): # end sample when one unit finish move
+            break
+        if not oneunit and move[0] == "turnover":  # end sample when turn is over
+            break
+    print("Random Traj finished %.2f sec, best rew %d" % (time() - T0, cumrew))
+    return actseq, curGame, cumrew
+
+def greedyPolicy(game, show=True, perm=False):
+    """Search the action space of selection, move, attack"""
+    T0 = time()
+    movseq_col = Stack()
+    movseq_col.push(([], 0, game))
+    whole_movseqs = PriorityQueue()  # [] #
+    while not movseq_col.isEmpty():
+        actseq, cumrew, curGame = movseq_col.pop()
+        moves, nextUIstate = curGame.getPossibleMoves()
+        if perm: moves = [moves[i] for i in permutation(len(moves))]
+        for move in moves:  #
+            next_actseq = copy(actseq)
+            next_actseq.append(move)
+            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
+            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
+            if move[0] in ["AOE","attack","stand","turnover"]:
+                whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew)
+                continue
+            # move = choice(moves)
+            movseq_col.push((next_actseq, nextcumrew, nextGame))
+    # print(whole_movseqs)
+    best_seq, best_state, best_rew = whole_movseqs.pop()
+    if show: print("DFS finished %.2f sec, best rew %d" % (time() - T0, best_rew))
+    return best_seq, best_state, best_rew
+
+#% Demo Random Game play
 # gamestr = GameStateCtrl()
 # actseq = []
 # # game.GUI_loop()
@@ -493,41 +719,136 @@ class GameStateCtrl:
 # print([unit.player for unit in game.unitList])
 # #%%
 # game.GUI_loop()
+
+# Demo Greedy Agents
+# game = GameStateCtrl()
+# game.endTurn()
+# for i in range(20):
+#     best_seq, best_state, best_rew = greedyPolicy(game)
+#     _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+# game.GUI_loop()
+# #%% This demonstrates Two Greedy agents playing with each other.
+# game = GameStateCtrl()
+# game.endTurn()
+#
+# # This is the basic loop for playing an action sequence step by step
+# Exitflag = False
+# while not Exitflag:
+#     for event in pg.event.get():
+#         if event.type == pg.QUIT:
+#             Exitflag = True
+#         if event.type == pg.KEYDOWN:
+#             if event.key == pg.K_TAB:
+#                 best_seq, best_state, best_rew = greedyPolicy(game)
+#                 _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+#     game.drawBackground()
+#     game.drawUnitList()
+#     pg.display.update()
+# #%%
+# # Strategic Value
+# game = GameStateCtrl()
+# game.endTurn()
+# best_seq, best_state, best_rew = greedyPolicy(game)
+# _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+# best_seq, best_state, best_rew = greedyPolicy(game)
+# _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
 #%%
-def greedyPolicy(game):
+# Threat of a unit
+from numpy.random import permutation
+def threat_unit(game, unit):
+    hypo_game = deepcopy(game)
+    if unit.player is not hypo_game.curPlayer:
+        hypo_game.endTurn(show=False)
+    # hypo_game.selectUnit(unit.pos)
+    hypo_game.curUnit = unit
+    hypo_game.UIstate = SELECT_MOVTARGET
+    bestenemy_seq, bestenemy_state, bestenemy_rew = greedyPolicy(hypo_game, show=False)
+    return bestenemy_rew, bestenemy_seq
+
+def threat_pos(game, pos):
+    hypo_game = deepcopy(game)
+    poslist = [unit.pos for unit in hypo_game.unitList]
+    if pos not in poslist:
+        return 0.0, []
+    unit = hypo_game.unitList[poslist.index(pos)]
+    if unit.player is not hypo_game.curPlayer:
+        hypo_game.endTurn(show=False)
+    # hypo_game.selectUnit(pos)
+    hypo_game.curUnit = unit
+    hypo_game.UIstate = SELECT_MOVTARGET
+    bestenemy_seq, bestenemy_state, bestenemy_rew = greedyPolicy(hypo_game, show=False)
+    return bestenemy_rew, bestenemy_seq
+
+def threat_general(game, curPlayer):
+    hypo_game = deepcopy(game)
+    # poslist = [unit.pos for unit in hypo_game.unitList]
+    # if pos not in poslist:
+    #     return 0.0, []
+    # unit = hypo_game.unitList[poslist.index(pos)]
+    if curPlayer is hypo_game.curPlayer:
+        hypo_game.endTurn(show=False)
+    # hypo_game.selectUnit(pos)
+    # hypo_game.curUnit = unit
+    # hypo_game.UIstate = SELECT_MOVTARGET
+    bestenemy_seq, bestenemy_state, bestenemy_rew = greedyPolicy(hypo_game, show=False)
+    return bestenemy_rew, bestenemy_seq
+
+def ThreatElimPolicy(game, gamma=0.9, perm=True):
+    """Search the action space of selection, move, attack"""
     T0 = time()
+    # threat_bsl, _ = threat_general(game, game.curPlayer)
+    targetPos, targetUnit = game.getAllEnemyUnit()
+    threat_dict = {}
+    for pos in targetPos:
+        threat_bef, _ = threat_pos(game, pos)
+        threat_dict[pos] = threat_bef
     movseq_col = Stack()
     movseq_col.push(([], 0, game))
     whole_movseqs = PriorityQueue()  # [] #
     while not movseq_col.isEmpty():
         actseq, cumrew, curGame = movseq_col.pop()
         moves, nextUIstate = curGame.getPossibleMoves()
-        for move in moves:  #
+        if perm: moves = [moves[i] for i in permutation(len(moves))]
+        for move in moves:#
             next_actseq = copy(actseq)
             next_actseq.append(move)
-            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True)
+            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
             nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1] # use the reward for this player
-            if move[0] is "attack" or move[0] is "stand":
-                # whole_movseqs.append((next_actseq, nextGame, nextcumrew))
-                # print("%d traj found" % len(whole_movseqs))
-                whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew)
-                # print("%d traj found" % len(whole_movseqs.heap))
+            thr_elim_val = 0
+            # TODO AOE
+            if move[0] is "attack":
+                targ_pos = move[1][0]
+                # threat_bef, _ = threat_pos(curGame, targ_pos)
+                threat_bef = threat_dict[targ_pos]
+                threat_aft, _ = threat_pos(nextGame, targ_pos)
+                thr_elim_val = threat_bef - threat_aft
+                print("Threat Value reduced by %.1f (@%d, %d)" % (thr_elim_val, *targ_pos))
+            if move[0] in ["AOE","attack","stand","turnover"]:
+                whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew - thr_elim_val * gamma)
                 continue
-            # move = choice(moves)
             movseq_col.push((next_actseq, nextcumrew, nextGame))
     best_seq, best_state, best_rew = whole_movseqs.pop()
-    print("DFS finished %.2f sec, best rew %d" % (time() - T0, best_rew))
+    print("DFS + Threat Reduce finished %.2f sec, best rew %d" % (time() - T0, best_rew))
     return best_seq, best_state, best_rew
-
+#%%
+# game = GameStateCtrl()
+# game.endTurn()
+# best_seq, best_state, best_rew = ThreatElimPolicy(game)
+# _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+# best_seq, best_state, best_rew = ThreatElimPolicy(game)
+# _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+# # hypo_game_post = deepcopy(game)
+# hypo_game_post.action_execute("attack", (5,5))
+# hypo_game_post.endTurn()
+# hypo_game_post.selectUnit((5, 5))
+# bestenemy_seq_post, bestenemy_state_post, bestenemy_rew_post = greedyPolicy(hypo_game_post)
+#%%
 game = GameStateCtrl()
-game.endTurn()
-for i in range(20):
-    best_seq, best_state, best_rew = greedyPolicy(game)
-    _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
 game.GUI_loop()
-#%% This demonstrates Two Greedy agents playing with each other. 
+#%% This demonstrates Two Threat Elimination agents playing with each other.
 game = GameStateCtrl()
-game.endTurn()
+game.GUI_loop()
+# game.endTurn()
 # This is the basic loop for playing an action sequence step by step
 Exitflag = False
 while not Exitflag:
@@ -536,13 +857,39 @@ while not Exitflag:
             Exitflag = True
         if event.type == pg.KEYDOWN:
             if event.key == pg.K_TAB:
-                best_seq, best_state, best_rew = greedyPolicy(game)
+                game.drawBackground()
+                game.drawUnitList()
+                pg.display.update()
+
+                game.endTurn()
+                best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
+                # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
                 _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
-    game.drawBackground()
-    game.drawUnitList()
-    pg.display.update()
+                game.drawBackground()
+                game.drawUnitList()
+                pg.display.update()
+    pass
+#%%
+
+
+#%%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #%% DFS search engine
+"""Obsolete"""
 # def DFS, even a single round has > 3287649 possible action sequences as defined here.
 game = GameStateCtrl()
 game.endTurn()
