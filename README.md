@@ -46,8 +46,10 @@ $ python main.py
 [x] New GUI display for AOE ability!  @Oct.12
 [x] Debug the AOE attack random die. @Oct.13
 [x] Scalable Approximate Threat Elimination Algor @Oct.13
+[ ] Search Tree recursion 2-3 levels
 [ ] Ability and Buff design, Heal
-[ ] Ability and Buff design, Summon?
+[ ] Economy and Unit purchase design. 
 [ ] Efficiency increase in search by improving the deep clone.
 [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 [ ] Search Tree proposal
+[ ] Ability and Buff design, Summon?

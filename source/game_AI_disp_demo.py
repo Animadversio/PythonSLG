@@ -253,7 +253,7 @@ class GameStateCtrl:
                         attacked = targetUnits[targetPos.index((ci, cj))]
                         # Real computation code for attack
                         harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
-                        attacked.HP -= abs(harm)
+                        attacked.HP -= max(harm, 1)
                         if attacked.HP <= 0:
                             attacked.alive = False
                             G.unitList.pop(G.unitList.index(attacked))
@@ -261,7 +261,7 @@ class GameStateCtrl:
                         counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
                         if counterattack:
                             harm2 = int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence
-                            G.curUnit.HP -= abs(harm2)
+                            G.curUnit.HP -= max(harm2, 1)
                             # FIXED: Currently Attacker and Attacked could Die together!
                             if G.curUnit.HP <= 0:
                                 G.curUnit.alive = False
@@ -337,7 +337,7 @@ class GameStateCtrl:
             attacked = targetUnits[targetPos.index((ci, cj))]
             # Real computation code for attack
             harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
-            attacked.HP -= abs(harm)
+            attacked.HP -= max(harm, 1)
             if attacked.HP <= 0:
                 attacked.alive = False
                 G.unitList.pop(G.unitList.index(attacked))
@@ -346,7 +346,7 @@ class GameStateCtrl:
             counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
             if counterattack:
                 harm2 = int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence
-                G.curUnit.HP -= abs(harm2)
+                G.curUnit.HP -= max(harm2, 1)
                 # FIXED: Currently Attacker and Attacked could Die together!
                 if G.curUnit.HP <= 0:
                     G.curUnit.alive = False
@@ -380,8 +380,8 @@ class GameStateCtrl:
             # Real computation code for attack
             # harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
             harm = G.curUnit.Attack - attacked.Defence  # AOE Magic don't suffer from HP loss #FIXME
-            isEnemy = 1 if G.curUnit.player != attacked.player else -1 # AOE can harm friemd team!
-            attacked.HP -= abs(harm)
+            isEnemy = 1 if G.curUnit.player != attacked.player else -1  # AOE can harm friemd team!
+            attacked.HP -= max(harm, 1)
             if attacked.HP <= 0:
                 attacked.alive = False
                 G.unitList.pop(G.unitList.index(attacked))
@@ -665,9 +665,9 @@ class GameStateCtrl:
         return targetPos# , targetUnit
 
 #%%
-game = GameStateCtrl()
-game.GUI_loop()
-#%%
+# game = GameStateCtrl()
+# game.GUI_loop()
+#%% Heuristic Policies
 def randomPolicy(game, oneunit=False):
     T0 = time()
     actseq, cumrew, curGame = [], 0, deepcopy(game)
@@ -677,7 +677,7 @@ def randomPolicy(game, oneunit=False):
         actseq.append(move)
         curGame, nextrewards = curGame.action_execute(*move, clone=False, show=False, reward=True)
         cumrew += nextrewards[curGame.curPlayer - 1]
-        if oneunit and (move[0] is "attack" or move[0] is "stand"): # end sample when one unit finish move
+        if oneunit and (move[0] in ["AOE","attack","stand","turnover"]): # end sample when one unit finish move
             break
         if not oneunit and move[0] == "turnover":  # end sample when turn is over
             break
@@ -693,7 +693,7 @@ def greedyPolicy(game, show=True, perm=False):
     while not movseq_col.isEmpty():
         actseq, cumrew, curGame = movseq_col.pop()
         moves, nextUIstate = curGame.getPossibleMoves()
-        if perm: moves = [moves[i] for i in permutation(len(moves))]
+        if perm: shuffle(moves)  # moves = [moves[i] for i in permutation(len(moves))]
         for move in moves:  #
             next_actseq = copy(actseq)
             next_actseq.append(move)
@@ -759,18 +759,19 @@ def greedyPolicy(game, show=True, perm=False):
 # _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
 #%%
 # Threat of a unit
-from numpy.random import permutation
-def threat_unit(game, unit):
+# from numpy.random import permutation
+from random import shuffle
+def threat_unit(game, unit, oppoPolicy=greedyPolicy, policyParam={}):
     hypo_game = deepcopy(game)
     if unit.player is not hypo_game.curPlayer:
         hypo_game.endTurn(show=False)
     # hypo_game.selectUnit(unit.pos)
     hypo_game.curUnit = unit
     hypo_game.UIstate = SELECT_MOVTARGET
-    bestenemy_seq, bestenemy_state, bestenemy_rew = greedyPolicy(hypo_game, show=False)
+    bestenemy_seq, bestenemy_state, bestenemy_rew = oppoPolicy(hypo_game, show=False, **policyParam)
     return bestenemy_rew, bestenemy_seq
 
-def threat_pos(game, pos):
+def threat_pos(game, pos, oppoPolicy=greedyPolicy, policyParam={}):
     hypo_game = deepcopy(game)
     poslist = [unit.pos for unit in hypo_game.unitList]
     if pos not in poslist:
@@ -781,24 +782,21 @@ def threat_pos(game, pos):
     # hypo_game.selectUnit(pos)
     hypo_game.curUnit = unit
     hypo_game.UIstate = SELECT_MOVTARGET
-    bestenemy_seq, bestenemy_state, bestenemy_rew = greedyPolicy(hypo_game, show=False)
+    bestenemy_seq, bestenemy_state, bestenemy_rew = oppoPolicy(hypo_game, show=False, **policyParam)
     return bestenemy_rew, bestenemy_seq
 
-def threat_general(game, curPlayer):
+def threat_general(game, curPlayer, oppoPolicy=greedyPolicy, policyParam={}):
     hypo_game = deepcopy(game)
-    # poslist = [unit.pos for unit in hypo_game.unitList]
-    # if pos not in poslist:
-    #     return 0.0, []
-    # unit = hypo_game.unitList[poslist.index(pos)]
     if curPlayer is hypo_game.curPlayer:
         hypo_game.endTurn(show=False)
     # hypo_game.selectUnit(pos)
     # hypo_game.curUnit = unit
     # hypo_game.UIstate = SELECT_MOVTARGET
-    bestenemy_seq, bestenemy_state, bestenemy_rew = greedyPolicy(hypo_game, show=False)
+    bestenemy_seq, bestenemy_state, bestenemy_rew = oppoPolicy(hypo_game, show=False, **policyParam)
     return bestenemy_rew, bestenemy_seq
 
 def computeHPloss(curGame, nextGame, targ_pos):
+    """Useful utility to compute the HP loss at given location in 2 game obj. Assume it's the same enemy"""
     poslist = [unit.pos for unit in curGame.unitList]
     nextposlist = [unit.pos for unit in nextGame.unitList]
     HP = curGame.unitList[poslist.index(targ_pos)].HP if targ_pos in poslist else 0
@@ -821,7 +819,7 @@ def ThreatElimPolicy(game, gamma=0.9, perm=True):
     while not movseq_col.isEmpty():
         actseq, cumrew, curGame = movseq_col.pop()
         moves, nextUIstate = curGame.getPossibleMoves()
-        if perm: moves = [moves[i] for i in permutation(len(moves))]
+        if perm: shuffle(moves)  # [moves[i] for i in permutation(len(moves))]
         for move in moves:#
             next_actseq = copy(actseq)
             next_actseq.append(move)
@@ -844,6 +842,61 @@ def ThreatElimPolicy(game, gamma=0.9, perm=True):
                     harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
                     thr_elim_val += threat_bef * harmPercent
             print("Threat Value reduced by %.1f" % (thr_elim_val))
+            # if move[0] in ["AOE","attack"]:
+            #     threat_all_aft, _ = threat_general(curGame, curGame.curPlayer)
+            #     thr_elim_val = threat_bsl - threat_all_aft
+            #     print("Threat Value reduced by %.1f" % (thr_elim_val, ))
+            if move[0] in ["AOE","attack","stand","turnover"]:
+                whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew - thr_elim_val * gamma)
+                continue
+            movseq_col.push((next_actseq, nextcumrew, nextGame))
+    best_seq, best_state, best_rew = whole_movseqs.pop()
+    print("DFS + Threat Reduce finished %.2f sec, best rew %d" % (time() - T0, best_rew))
+    return best_seq, best_state, best_rew
+#%%
+def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
+    """Search the action space of selection, move, attack"""
+    if recursL <= 0:
+        best_seq, best_state, best_rew = greedyPolicy(game, show=show, perm=perm)
+        return best_seq, best_state, best_rew
+    T0 = time()
+    # threat_bsl, _ = threat_general(game, game.curPlayer, oppoPolicy=ThreatElimPolicy_recurs,
+    #                                policyParam={"recursL": recursL-1})
+    targetPos, targetUnit = game.getAllEnemyUnit()
+    threat_dict = {}
+    for pos in targetPos:
+        threat_bef, _ = threat_pos(game, pos, oppoPolicy=ThreatElimPolicy_recurs,
+                                   policyParam={"recursL": recursL-1})
+        threat_dict[pos] = threat_bef
+    movseq_col = Stack()
+    movseq_col.push(([], 0, game))
+    whole_movseqs = PriorityQueue()  # [] #
+    while not movseq_col.isEmpty():
+        actseq, cumrew, curGame = movseq_col.pop()
+        moves, nextUIstate = curGame.getPossibleMoves()
+        if perm: shuffle(moves)  # [moves[i] for i in permutation(len(moves))]
+        for move in moves:#
+            next_actseq = copy(actseq)
+            next_actseq.append(move)
+            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
+            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1] # use the reward for this player
+            thr_elim_val = 0
+            # TODO AOE
+            if move[0] is "attack":
+                targ_pos = move[1][0]
+                # threat_bef, _ = threat_pos(curGame, targ_pos)
+                # threat_bef = threat_dict[targ_pos]
+                # threat_aft, _ = threat_pos(nextGame, targ_pos)
+                # thr_elim_val = threat_bef - threat_aft # This is more accurate MC method
+                threat_bef = threat_dict[targ_pos]
+                harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                thr_elim_val += threat_bef * harmPercent  # This is less accurate
+            if move[0] is "AOE":
+                for targ_pos in move[1][1]:  # targetPosList for AOE attack
+                    threat_bef = threat_dict[targ_pos]
+                    harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                    thr_elim_val += threat_bef * harmPercent
+            if show: print("Lev %d Threat Value reduced by %.1f" % (recursL, thr_elim_val))
             # if move[0] in ["AOE","attack"]:
             #     threat_all_aft, _ = threat_general(curGame, curGame.curPlayer)
             #     thr_elim_val = threat_bsl - threat_all_aft
@@ -887,8 +940,9 @@ while not Exitflag:
                 pg.display.update()
 
                 game.endTurn()
-                best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
                 # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
+                # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
+                best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
                 _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
                 game.drawBackground()
                 game.drawUnitList()
