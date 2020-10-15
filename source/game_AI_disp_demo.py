@@ -471,21 +471,21 @@ class GameStateCtrl:
             rewards = [0.0 for player in G.playerList]
             if action_type is "turnover":
                 G.endTurn(show=show)
-            if action_type is "select":
+            elif action_type is "select":
                 G.selectUnit(param[0], show=show)
-            if action_type is "move":
+            elif action_type is "move":
                 G.move(param[0], show=show, checklegal=checklegal)
-            if action_type is "useAttack":
+            elif action_type is "useAttack":
                 G.UIstate = SELECT_ATTTARGET
-            if action_type is "useStorm":
+            elif action_type is "useStorm":
                 G.UIstate = SELECT_AOETARGET
-            if action_type is "useHeal":
+            elif action_type is "useHeal":
                 G.UIstate = SELECT_HEALTARGET
-            if action_type is "attack":  # attack will generate real rewards!
+            elif action_type is "attack":  # attack will generate real rewards!
                 rewards = G.attack(param[0], show=show, reward=reward, checklegal=checklegal)
-            if action_type is "AOE":  # attack will generate real rewards!
+            elif action_type is "AOE":  # attack will generate real rewards!
                 rewards = G.attack_AOE(param[0], param[1], show=show, reward=reward, checklegal=checklegal)
-            if action_type is "stand":
+            elif action_type is "stand":
                 G.stand(show=show)
             cum_rewards = [cum_rewards[i] + rewards[i] for i, _ in enumerate(G.playerList)]
         return G, cum_rewards
@@ -737,7 +737,10 @@ def randomPolicy(game, oneunit=False):
     return actseq, curGame, cumrew
 
 def greedyPolicy(game, show=True, perm=False):
-    """Search the action space of selection, move, attack"""
+    """Search the action space of selection, move, attack
+    that maximize
+            next step reward
+    """
     T0 = time()
     movseq_col = Stack()
     movseq_col.push(([], 0, game))
@@ -762,7 +765,10 @@ def greedyPolicy(game, show=True, perm=False):
     return best_seq, best_state, best_rew
 
 def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
-    """Search the action space of selection, move, attack"""
+    """
+    Search the action space that maximize
+            next step reward - alpha * risk(pos)
+    """
     T0 = time()
     # Chart the enemy's coverages
     allEnemyPos, allEnemyUnit = game.getAllEnemyUnit()
@@ -778,7 +784,7 @@ def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
         for tarPos, coverSet in enemyCoverSets.items():
             if tarPos in mask: continue # the unit you just attacked...
             if pos in coverSet:
-                # risk += harmValues[tarPos]
+                # risk += harmValues[tarPos]  # Here it can be expectation, sum or Max.
                 risk = max(risk, harmValues[tarPos])
         return risk
 
@@ -788,7 +794,6 @@ def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
     while not movseq_col.isEmpty():
         actseq, cumrew, cumrisk, curGame = movseq_col.pop()
         # if curGame.UIstate == SELECT_MOVTARGET:
-
         moves, nextUIstate = curGame.getPossibleMoves()
         if perm: shuffle(moves)  # moves = [moves[i] for i in permutation(len(moves))]
         for move in moves:  #
@@ -805,8 +810,144 @@ def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
             # move = choice(moves)
             movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
     # print(whole_movseqs)
-    best_seq, best_state, bestrisk, best_rew = whole_movseqs.pop()
+    best_seq, best_state, best_rew, bestrisk,  = whole_movseqs.pop()
     if show: print("DFS finished %.2f sec, best rew %d, least risk %d" % (time() - T0, best_rew, bestrisk))
+    return best_seq, best_state, best_rew
+
+
+def greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.9, alpha=0.2):
+    """Search the action space of selection, move, attack
+    Search the action space that maximize
+            next step reward + gamma * threat_elim - alpha * risk(pos)
+    """
+    T0 = time()
+    # Chart the enemy's coverages
+    allEnemyPos, allEnemyUnit = game.getAllEnemyUnit()
+    threat_dict = {}
+    enemyCoverSets = {}
+    harmValues = {}
+    for pos, unit in zip(allEnemyPos, allEnemyUnit):
+        coverSet = game.getUnitAttackCoverage(unit,)
+        enemyCoverSets[pos] = coverSet
+        harmValues[pos] = unit.Attack * unit.HP / 100.0
+        threat_bef, _ = threat_pos(game, pos)
+        threat_dict[pos] = threat_bef
+
+    def riskFun(pos, mask=[]):
+        risk = 0.0
+        for tarPos, coverSet in enemyCoverSets.items():
+            if tarPos in mask: continue # the unit you just attacked...
+            if pos in coverSet:
+                # risk += harmValues[tarPos]
+                risk = max(risk, harmValues[tarPos])
+        return risk
+
+    movseq_col = Stack()
+    movseq_col.push(([], 0, 0, game))
+    whole_movseqs = PriorityQueue()  # [] #
+    while not movseq_col.isEmpty():
+        actseq, cumrew, cumrisk, curGame = movseq_col.pop()
+        # if curGame.UIstate == SELECT_MOVTARGET:
+        moves, nextUIstate = curGame.getPossibleMoves()
+        if perm: shuffle(moves)  # moves = [moves[i] for i in permutation(len(moves))]
+        for move in moves:  #
+            nextrisk = cumrisk
+            next_actseq = copy(actseq)
+            next_actseq.append(move)
+            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
+            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
+            if move[0] in ["move"]: # can mask out more the one you attack pose less threat to you
+                nextrisk += (riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
+            thr_elim_val = 0
+            if move[0] is "attack":
+                targ_pos = move[1][0]
+                threat_bef = threat_dict[targ_pos]
+                harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                thr_elim_val += threat_bef * harmPercent  # This is less accurate
+            if move[0] is "AOE":
+                for targ_pos in move[1][1]:  # targetPosList for AOE attack
+                    threat_bef = threat_dict[targ_pos]
+                    harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                    thr_elim_val += threat_bef * harmPercent
+            # print("Threat Value reduced by %.1f" % (thr_elim_val))
+            if move[0] in ["AOE", "attack", "stand", "turnover"]:
+                whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk, thr_elim_val), -nextcumrew + nextrisk * alpha - thr_elim_val * gamma)
+                continue
+            movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
+    # print(whole_movseqs)
+    best_seq, best_state, best_rew, bestrisk, best_threat_elim = whole_movseqs.pop()
+    if show: print("DFS finished %.2f sec, best rew %d, least risk %d, threat elim %d" % (time() - T0, best_rew, bestrisk, best_threat_elim))
+    return best_seq, best_state, best_rew
+
+
+
+def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.4, alpha=0.2):
+    """Search the action space of selection, move, attack
+    Search the action space that maximize
+            next step reward + gamma * threat_elim + beta * threat_posing - alpha * risk(pos)
+    """
+    T0 = time()
+    # Chart the enemy's coverages
+    allEnemyPos, allEnemyUnit = game.getAllEnemyUnit()
+    threat_dict = {}
+    enemyCoverSets = {}
+    harmValues = {}
+    for pos, unit in zip(allEnemyPos, allEnemyUnit):
+        coverSet = game.getUnitAttackCoverage(unit,)
+        enemyCoverSets[pos] = coverSet
+        harmValues[pos] = unit.Attack * unit.HP / 100.0
+        threat_bef, _ = threat_pos(game, pos)
+        threat_dict[pos] = threat_bef
+
+    def riskFun(pos, mask=[]):
+        risk = 0.0
+        for tarPos, coverSet in enemyCoverSets.items():
+            if tarPos in mask: continue # the unit you just attacked...
+            if pos in coverSet:
+                # risk += harmValues[tarPos]
+                risk = max(risk, harmValues[tarPos])
+        return risk
+
+    movseq_col = Stack()
+    movseq_col.push(([], 0, 0, game))
+    whole_movseqs = PriorityQueue()  # [] #
+    while not movseq_col.isEmpty():
+        actseq, cumrew, cumrisk, curGame = movseq_col.pop()
+        # if curGame.UIstate == SELECT_MOVTARGET:
+        moves, nextUIstate = curGame.getPossibleMoves()
+        if perm: shuffle(moves)  # moves = [moves[i] for i in permutation(len(moves))]
+        for move in moves:  #
+            nextrisk = cumrisk
+            next_actseq = copy(actseq)
+            next_actseq.append(move)
+            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
+            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
+            if move[0] in ["move"]: # can mask out more the one you attack pose less threat to you
+                nextrisk += (riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
+            thr_elim_val = 0
+            if move[0] is "attack":
+                targ_pos = move[1][0]
+                threat_bef = threat_dict[targ_pos]
+                harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                thr_elim_val += threat_bef * harmPercent  # This is less accurate
+            if move[0] is "AOE":
+                for targ_pos in move[1][1]:  # targetPosList for AOE attack
+                    threat_bef = threat_dict[targ_pos]
+                    harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                    thr_elim_val += threat_bef * harmPercent
+            # print("Threat Value reduced by %.1f" % (thr_elim_val))
+            threat_posing = 0.0 # This simulation is too slow, need a better way to estimate it.
+            if move[0] in ["AOE", "attack", "stand"]:
+                threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit)
+            if move[0] in ["AOE", "attack", "stand", "turnover"]:
+                whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk, thr_elim_val, threat_posing),
+                                   -nextcumrew + nextrisk * alpha - threat_posing * beta - thr_elim_val * gamma)
+                continue
+            movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
+    # print(whole_movseqs)
+    best_seq, best_state, best_rew, bestrisk, best_threat_elim, best_thr_posing = whole_movseqs.pop()
+    if show: print("DFS finished %.2f sec, best rew %d, least risk %d, threat elim %d, threat posing %d" %
+                   (time() - T0, best_rew, bestrisk, best_threat_elim, best_thr_posing))
     return best_seq, best_state, best_rew
 #% Demo Random Game play
 # gamestr = GameStateCtrl()
@@ -865,7 +1006,8 @@ def threat_unit(game, unit, oppoPolicy=greedyPolicy, policyParam={}):
     if unit.player is not hypo_game.curPlayer:
         hypo_game.endTurn(show=False)
     # hypo_game.selectUnit(unit.pos)
-    hypo_game.curUnit = unit
+    hypo_game.curUnit = hypo_game.unitList[game.unitList.index(unit)]
+    hypo_game.curUnit.moved = False
     hypo_game.UIstate = SELECT_MOVTARGET
     bestenemy_seq, bestenemy_state, bestenemy_rew = oppoPolicy(hypo_game, show=False, **policyParam)
     return bestenemy_rew, bestenemy_seq
@@ -873,13 +1015,14 @@ def threat_unit(game, unit, oppoPolicy=greedyPolicy, policyParam={}):
 def threat_pos(game, pos, oppoPolicy=greedyPolicy, policyParam={}):
     hypo_game = deepcopy(game)
     poslist = [unit.pos for unit in hypo_game.unitList]
-    if pos not in poslist:
+    if pos not in poslist: # maybe that unit has died...
         return 0.0, []
     unit = hypo_game.unitList[poslist.index(pos)]
     if unit.player is not hypo_game.curPlayer:
         hypo_game.endTurn(show=False)
     # hypo_game.selectUnit(pos)
     hypo_game.curUnit = unit
+    hypo_game.curUnit.moved = False
     hypo_game.UIstate = SELECT_MOVTARGET
     bestenemy_seq, bestenemy_state, bestenemy_rew = oppoPolicy(hypo_game, show=False, **policyParam)
     return bestenemy_rew, bestenemy_seq
@@ -980,7 +1123,6 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
             nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
             nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1] # use the reward for this player
             thr_elim_val = 0
-            # TODO AOE
             if move[0] is "attack":
                 targ_pos = move[1][0]
                 # threat_bef, _ = threat_pos(curGame, targ_pos)
@@ -1027,6 +1169,7 @@ game = GameStateCtrl()
 # game.GUI_loop()
 # game.endTurn()
 # This is the basic loop for playing an action sequence step by step
+#%
 Exitflag = False
 Moveflag = False
 automove = True
@@ -1045,7 +1188,9 @@ while not Exitflag:
         # game.endTurn() # Each side move one unit each turn!
 
         # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
-        best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
+        # best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
+        # best_seq, best_state, best_rew = greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.7, alpha=0.15)
+        best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.7, beta=0.4, alpha=0.15)
         # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
         # best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
         _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
