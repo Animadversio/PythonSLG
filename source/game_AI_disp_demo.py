@@ -61,6 +61,7 @@ StormSummonerCfg = {"Type": "StormSummoner", "HP": 100, "Attack": 30, "Defence":
 
 valueDict = {"Soldier": 100, "Archer": 150, "Knight": 400, "Catapult": 700,
              "StoneMan": 600, "StormSummoner": 600}
+unitPrice = lambda unit: valueDict[unit.Type]
 #%%
 def playerIterator(playerList):
     turn = 0
@@ -326,7 +327,7 @@ class GameStateCtrl:
             raise ValueError
 
     def attack(G, csr, show=True, reward=False, checklegal=True):
-        unitValue = lambda unit: valueDict[unit.Type] # value function for each value. Should be learnable
+        unitValue = lambda unit: valueDict[unit.Type]  # value function for each value. Should be learnable
         attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
         targetPos, targetUnits = G.getTargetInRange(G.curUnit, attRange)
         if show: G.drawLocation(attRange, (220, 180, 180))  # draw a list of location in one color
@@ -336,7 +337,7 @@ class GameStateCtrl:
             if show: print("Unit @ (%d, %d) attack (%d, %d)" % (*G.curUnit.pos, ci, cj))
             attacked = targetUnits[targetPos.index((ci, cj))]
             # Real computation code for attack
-            harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
+            harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence  # - tile.Defence
             attacked.HP -= max(harm, 1)
             if attacked.HP <= 0:
                 attacked.alive = False
@@ -643,8 +644,58 @@ class GameStateCtrl:
         targetPosList = [centerTargetDict[cent] for cent in centerPos]
         return centerPos, targetPosList, # targetUnitList
 
+    def getMovAttPair(G, curUnit, unitList=None, radius=1):
+        if unitList is None: unitList = G.unitList
+        unit_pos = set([unit.pos for unit in unitList if
+                    unit is not curUnit])  # other unit's position. Or you cannot stay put
+        obst_pos = G.getObstacleInRange(curUnit, None, unitList=unitList)
+        movRange = set(G.getMovRange(curUnit.pos, curUnit.Movepnt, obst_pos))
+        valMovRange = movRange.difference(unit_pos)
+        LB, UB = curUnit.AttackRng
+        allEnemyPos, allEnemyUnit = G.getAllEnemyUnit(unitList)
+        AtkMvPairs = []
+        for movpos in valMovRange:
+            for tarpos, tarUnit in zip(allEnemyPos, allEnemyUnit):
+                if LB <= abs(movpos[0] - tarpos[0]) + abs(movpos[1] - tarpos[1]) <= UB:
+                    AtkMvPairs.append([("move", [movpos]), ("attack", [tarpos]), tarUnit])
+                    # Evaluation func
+        return AtkMvPairs
+
+    def getCombatStats(G, attacker, attacked, atkrpos=None, atkdpos=None):
+        if atkrpos is None: atkrpos = attacker.pos
+        if atkdpos is None: atkdpos = attacked.pos
+        harm = int(attacker.Attack / 100.0 * attacker.HP) - attacked.Defence  # - tile[atkdpos].Defence
+        atkd_HP_aft = attacked.HP - max(harm, 1)
+        atkd_alive = True
+        if atkd_HP_aft <= 0:  atkd_alive = False
+        attDis = abs(atkrpos[0] - atkdpos[0]) + abs(atkrpos[1] - atkdpos[1])
+        counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and atkd_alive  # and bla bla bla
+        harm2, atkr_alive = 0, True
+        if counterattack:
+            harm2 = int(attacked.Attack / 100.0 * atkd_HP_aft) - attacker.Defence  # - tile[atkrpos].Defence
+            atkr_HP_aft = attacker.HP - max(harm2, 1)
+            if atkr_HP_aft <= 0:  atkr_alive = False
+        # Compute reward value
+        atkrReward = harm / 100.0 * unitPrice(attacked) + (not atkd_alive) * unitPrice(attacked)
+        if counterattack:
+            atkrReward -= harm2 / 100.0 * unitPrice(attacker) + (not atkr_alive) * unitPrice(attacker)
+        return harm, atkd_alive, harm2, atkr_alive, atkrReward
+
+    def getUnitAttackCoverage(G, curUnit, movRange=None, unitList=None):
+        if unitList is None: unitList = G.unitList
+        if movRange is None:
+            unit_pos = set([unit.pos for unit in unitList if
+                            unit is not curUnit])  # other unit's position. Or you can stay on top of unit in same player
+            obst_pos = G.getObstacleInRange(curUnit, None, unitList=unitList)
+            movRange = set(G.getMovRange(curUnit.pos, curUnit.Movepnt, obst_pos))
+            movRange = movRange.difference(unit_pos)
+        coverSet = set()
+        for movpos in movRange:
+            coverSet.update(G.getAttackRange(movpos, *curUnit.AttackRng))
+        return coverSet
+
     def getAllEnemyUnit(G, unitList=None):
-        """attRange can be None to indicate all opponent units"""
+        """"""
         if unitList is None: unitList = G.unitList
         targetPos = []
         targetUnit = []
@@ -668,6 +719,7 @@ class GameStateCtrl:
 # game = GameStateCtrl()
 # game.GUI_loop()
 #%% Heuristic Policies
+""" Policies """
 def randomPolicy(game, oneunit=False):
     T0 = time()
     actseq, cumrew, curGame = [], 0, deepcopy(game)
@@ -709,6 +761,53 @@ def greedyPolicy(game, show=True, perm=False):
     if show: print("DFS finished %.2f sec, best rew %d" % (time() - T0, best_rew))
     return best_seq, best_state, best_rew
 
+def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
+    """Search the action space of selection, move, attack"""
+    T0 = time()
+    # Chart the enemy's coverages
+    allEnemyPos, allEnemyUnit = game.getAllEnemyUnit()
+    enemyCoverSets = {}
+    harmValues = {}
+    for pos, unit in zip(allEnemyPos, allEnemyUnit):
+        coverSet = game.getUnitAttackCoverage(unit,)
+        enemyCoverSets[pos] = coverSet
+        harmValues[pos] = unit.Attack * unit.HP / 100.0
+
+    def riskFun(pos, mask=[]):
+        risk = 0.0
+        for tarPos, coverSet in enemyCoverSets.items():
+            if tarPos in mask: continue # the unit you just attacked...
+            if pos in coverSet:
+                # risk += harmValues[tarPos]
+                risk = max(risk, harmValues[tarPos])
+        return risk
+
+    movseq_col = Stack()
+    movseq_col.push(([], 0, 0, game))
+    whole_movseqs = PriorityQueue()  # [] #
+    while not movseq_col.isEmpty():
+        actseq, cumrew, cumrisk, curGame = movseq_col.pop()
+        # if curGame.UIstate == SELECT_MOVTARGET:
+
+        moves, nextUIstate = curGame.getPossibleMoves()
+        if perm: shuffle(moves)  # moves = [moves[i] for i in permutation(len(moves))]
+        for move in moves:  #
+            nextrisk = cumrisk
+            next_actseq = copy(actseq)
+            next_actseq.append(move)
+            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
+            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
+            if move[0] in ["move"]:
+                nextrisk += (riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit) # can mask out more...
+            if move[0] in ["AOE", "attack", "stand", "turnover"]:
+                whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk), -nextcumrew + nextrisk * alpha)
+                continue
+            # move = choice(moves)
+            movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
+    # print(whole_movseqs)
+    best_seq, best_state, bestrisk, best_rew = whole_movseqs.pop()
+    if show: print("DFS finished %.2f sec, best rew %d, least risk %d" % (time() - T0, best_rew, bestrisk))
+    return best_seq, best_state, best_rew
 #% Demo Random Game play
 # gamestr = GameStateCtrl()
 # actseq = []
@@ -758,7 +857,7 @@ def greedyPolicy(game, show=True, perm=False):
 # best_seq, best_state, best_rew = greedyPolicy(game)
 # _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
 #%%
-# Threat of a unit
+# Threat of a unit, computed by recursive algorithm.
 # from numpy.random import permutation
 from random import shuffle
 def threat_unit(game, unit, oppoPolicy=greedyPolicy, policyParam={}):
@@ -921,33 +1020,39 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
 # hypo_game_post.selectUnit((5, 5))
 # bestenemy_seq_post, bestenemy_state_post, bestenemy_rew_post = greedyPolicy(hypo_game_post)
 #%%
-game = GameStateCtrl()
-game.GUI_loop()
+# game = GameStateCtrl()
+# game.GUI_loop()
 #%% This demonstrates Two Threat Elimination agents playing with each other.
 game = GameStateCtrl()
 # game.GUI_loop()
 # game.endTurn()
 # This is the basic loop for playing an action sequence step by step
 Exitflag = False
+Moveflag = False
+automove = True
 while not Exitflag:
+    Moveflag = automove
     for event in pg.event.get():
         if event.type == pg.QUIT:
             Exitflag = True
         if event.type == pg.KEYDOWN:
             if event.key == pg.K_TAB:
-                game.drawBackground()
-                game.drawUnitList()
-                pg.display.update()
+                Moveflag=True
+    if Moveflag:
+        game.drawBackground()
+        game.drawUnitList()
+        pg.display.update()
+        # game.endTurn() # Each side move one unit each turn!
 
-                game.endTurn()
-                # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
-                # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
-                best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
-                _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
-                game.drawBackground()
-                game.drawUnitList()
-                pg.display.update()
-    pass
+        # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
+        best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
+        # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
+        # best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
+        _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
+        game.drawBackground()
+        game.drawUnitList()
+        pg.display.update()
+
 #%%
 
 
@@ -970,32 +1075,32 @@ while not Exitflag:
 #%% DFS search engine
 """Obsolete"""
 # def DFS, even a single round has > 3287649 possible action sequences as defined here.
-game = GameStateCtrl()
-game.endTurn()
-T0 = time()
-movseq_col = Stack()
-movseq_col.push(([], 0, game))
-whole_movseqs = PriorityQueue() # [] #
-while not movseq_col.isEmpty():
-    actseq, cumrew, curGame = movseq_col.pop()
-    moves, nextUIstate = curGame.getPossibleMoves()
-    # if len(movseq_col.list) > 500 or len(whole_movseqs) > 100:
-    #     break
-    #     print("%d traj found"%len(whole_movseqs))
-    for move in moves: #
-        next_actseq = copy(actseq)
-        next_actseq.append(move)
-        nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True)
-        nextcumrew = cumrew + nextrewards[curGame.curPlayer-1]
-        if move[0] is "attack" or move[0] is "stand":
-            # whole_movseqs.append((next_actseq, nextGame, nextcumrew))
-            # print("%d traj found" % len(whole_movseqs))
-            whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew)
-            print("%d traj found" % len(whole_movseqs.heap))
-            continue
-        # move = choice(moves)
-        movseq_col.push((next_actseq, nextcumrew, nextGame))
-print("%.2f sec" % (time() - T0)) # selecting and moving one of the units has 192 different move seqs. Finished in .25sec
+# game = GameStateCtrl()
+# game.endTurn()
+# T0 = time()
+# movseq_col = Stack()
+# movseq_col.push(([], 0, game))
+# whole_movseqs = PriorityQueue() # [] #
+# while not movseq_col.isEmpty():
+#     actseq, cumrew, curGame = movseq_col.pop()
+#     moves, nextUIstate = curGame.getPossibleMoves()
+#     # if len(movseq_col.list) > 500 or len(whole_movseqs) > 100:
+#     #     break
+#     #     print("%d traj found"%len(whole_movseqs))
+#     for move in moves: #
+#         next_actseq = copy(actseq)
+#         next_actseq.append(move)
+#         nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True)
+#         nextcumrew = cumrew + nextrewards[curGame.curPlayer-1]
+#         if move[0] is "attack" or move[0] is "stand":
+#             # whole_movseqs.append((next_actseq, nextGame, nextcumrew))
+#             # print("%d traj found" % len(whole_movseqs))
+#             whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew)
+#             print("%d traj found" % len(whole_movseqs.heap))
+#             continue
+#         # move = choice(moves)
+#         movseq_col.push((next_actseq, nextcumrew, nextGame))
+# print("%.2f sec" % (time() - T0)) # selecting and moving one of the units has 192 different move seqs. Finished in .25sec
 # print([unit.pos for unit in game.unitList])
 # print([unit.player for unit in game.unitList])
 #%%

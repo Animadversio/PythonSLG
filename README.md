@@ -46,10 +46,16 @@ $ python main.py
 [x] New GUI display for AOE ability!  @Oct.12
 [x] Debug the AOE attack random die. @Oct.13
 [x] Scalable Approximate Threat Elimination Algor @Oct.13
-[ ] Search Tree recursion 2-3 levels
-[ ] Ability and Buff design, Heal
+[x] Search Tree recursion 2-3 levels for Threat Elimination algorithm @Oct.13
+[x] debug negative harm affect positively @Oct.13
+[x] Utility function, computing combat info, computing attack coverage, and Mov Attack pair... @Oct.14
+[x] Danger of tile calculation add this to heuristic. @Oct.14
+[x] Risk aversion greedy policy, alpha to trade off risk and reward.  @Oct.14
+    * Still, it doesn't estimate the potential benefit (2nd order gain) of that position... 
+    * This is a first order estimate of next enemy turn lost, but no 2nd order estimate of gain in the next turn..
+[ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
+[ ] Pre compute a match table to save computation.  
 [ ] Economy and Unit purchase design. 
 [ ] Efficiency increase in search by improving the deep clone.
-[ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
-[ ] Search Tree proposal
+[ ] Ability and Buff design, Heal
 [ ] Ability and Buff design, Summon?
