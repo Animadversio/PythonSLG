@@ -1,5 +1,5 @@
-# PythonStrategyRPG
-It is a simple strategy turn based game
+# Python SLG
+It is a strategy turn based game, inspired by code in PythonStrategyRPG, game mechanism is inspired by Ancient Empire II
 * use AStar algorithm to walk
 * support melee and remote creature
 * use json file to store level data (e.g. position of creatures, map info)
@@ -56,6 +56,7 @@ $ python main.py
     * This is a first order estimate of next enemy turn lost, but no 2nd order estimate of gain in the next turn..
 - [x] Simple estimation of threat posing on others, and Maximize threat on others, minimize threat posed on me. @Oct.15
 - [x] Efficiency increase by improving the deep clone unit and game state, improve attack range computation by not saving the set. @Oct.15
+- [x] Debug the negative threat elimin value problem @Oct.15
 - [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 - [ ] Pre compute a match table to save computation.  
 - [ ] Economy and Unit purchase design. 

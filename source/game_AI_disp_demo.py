@@ -920,7 +920,7 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
     allEnemyPos, allEnemyUnit = game.getAllEnemyUnit()
     threat_dict = {}
     enemyCoverSets = {}
-    harmValues = {}
+    harmValues = {}  # The attack value weighted by its HP.
     for pos, unit in zip(allEnemyPos, allEnemyUnit):
         coverSet = game.getUnitAttackCoverage(unit,)
         enemyCoverSets[pos] = coverSet
@@ -957,12 +957,12 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
             if move[0] is "attack":
                 targ_pos = move[1][0]
                 threat_bef = threat_dict[targ_pos]
-                harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0  # should be positive now
                 thr_elim_val += threat_bef * harmPercent  # This is less accurate
             if move[0] is "AOE":
                 for targ_pos in move[1][1]:  # targetPosList for AOE attack
                     threat_bef = threat_dict[targ_pos]
-                    harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
+                    harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0  # should be positive now
                     thr_elim_val += threat_bef * harmPercent
             # print("Threat Value reduced by %.1f" % (thr_elim_val))
             threat_posing = 0.0 # This simulation is too slow, need a better way to estimate it.
@@ -1072,7 +1072,7 @@ def computeHPloss(curGame, nextGame, targ_pos):
     nextposlist = [unit.pos for unit in nextGame.unitList]
     HP = curGame.unitList[poslist.index(targ_pos)].HP if targ_pos in poslist else 0
     HPnext = nextGame.unitList[nextposlist.index(targ_pos)].HP if targ_pos in nextposlist else 0
-    HPloss = HPnext - HP
+    HPloss = HP - HPnext # FIX BUG in HPLoss
     return HPloss
 
 def ThreatElimPolicy(game, gamma=0.9, perm=True):
