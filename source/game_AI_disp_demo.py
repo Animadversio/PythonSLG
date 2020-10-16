@@ -199,10 +199,10 @@ class GameStateCtrl:
                 # unit_pos = [unit.pos for unit in unitList
                 #             if unit.player == curPlayer and not unit.moved]  # add condition for selectable
                 if K_confirm and (ci, cj) in selectable_pos:
-                    print("Unit selected (%d, %d)"%(ci, cj))
                     # unitId = unit_pos.index((ci, cj))
                     G.curUnit = posDict[(ci, cj)] # unitList[unitId]
                     G.UIstate = SELECT_MOVTARGET
+                    print("Unit %s selected (%d, %d)"%(G.curUnit.Type, ci, cj))
 
             elif G.UIstate == SELECT_MOVTARGET:
                 unit_pos = [unit.pos for unit in G.unitList if unit is not G.curUnit]
@@ -210,7 +210,7 @@ class GameStateCtrl:
                 movRange = G.getMovRange(G.curUnit.pos, G.curUnit.Movepnt, obst_pos)
                 G.drawLocation(movRange, (160, 180, 180))  # draw a list of location in one color
                 if K_confirm and (ci, cj) in movRange and (ci, cj) not in unit_pos:
-                    print("Unit move (%d, %d) -> (%d, %d)"%(*G.curUnit.pos, ci, cj))
+                    print("Unit %s move (%d, %d) -> (%d, %d)"%(G.curUnit.Type, *G.curUnit.pos, ci, cj))
                     # move(unit, mov2i, mov2j)
                     ui_orig, uj_orig = G.curUnit.pos  # record this just in case user cancels
                     G.move((ci, cj), show=True, checklegal=True)
@@ -243,7 +243,7 @@ class GameStateCtrl:
                 G.drawCircTarget(targetUnion, (240, 130, 130))
                 if K_confirm and (ci, cj) in centRange:
                     posList = targetPosList[centRange.index((ci, cj))]
-                    print("Unit (%d, %d) Attack AOE (%d, %d)" % (*G.curUnit.pos, ci, cj))
+                    print("Unit %s (%d, %d) Attack AOE (%d, %d)" % (G.curUnit.Type, *G.curUnit.pos, ci, cj))
                     print(posList)
                     G.attack_AOE((ci, cj), posList, show=True, reward=True, checklegal=True)
 
@@ -257,8 +257,8 @@ class GameStateCtrl:
                 G.drawCsrLocation(targetPos, (250, 130, 130))
                 if K_confirm:
                     if (ci, cj) in targetPos:  # confirmed attack
-                        print("Unit @ (%d, %d) attack (%d, %d)" % (*G.curUnit.pos, ci, cj))
                         attacked = targetUnits[targetPos.index((ci, cj))]
+                        print("Unit %s @ (%d, %d) attack %s (%d, %d)" % (G.curUnit.Type, *G.curUnit.pos, attacked.Type, ci, cj))
                         # Real computation code for attack
                         harm = max(1, int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence)
                         attacked.HP -= harm
@@ -308,9 +308,9 @@ class GameStateCtrl:
         posDict = {unit.pos: unit for unit in G.unitList}
         selectable_pos, selectable_unit = G.getSelectableUnit()  # unitList, curPlayer  # add condition for selectable
         if csr in selectable_pos:
-            if show: print("Unit selected (%d, %d)" % (*csr, ))
             G.curUnit = posDict[csr]  # unitList[unitId]
             G.UIstate = SELECT_MOVTARGET
+            if show: print("Unit %s selected (%d, %d)" % (G.curUnit.Type, *csr, ))
         else:
             raise ValueError
 
@@ -322,7 +322,7 @@ class GameStateCtrl:
             movRange = G.getMovRange(G.curUnit.pos, G.curUnit.Movepnt, obst_pos)
             if show: G.drawLocation(movRange, (160, 180, 180))  # draw a list of location in one color
         if not checklegal or (checklegal and csr in movRange and csr not in unit_pos):
-            if show: print("Unit move (%d, %d) -> (%d, %d)"%(*G.curUnit.pos, *csr, ))
+            if show: print("Unit %s move (%d, %d) -> (%d, %d)"%(G.curUnit.Type, *G.curUnit.pos, *csr, ))
             # move(unit, mov2i, mov2j)
             ui_orig, uj_orig = G.curUnit.pos  # record this just in case user cancels
             G.curUnit.pos = csr  # ui, uj
@@ -369,8 +369,8 @@ class GameStateCtrl:
                     G.curUnit.HP -= harm2
                 if reward: attackerRew -= harm2 / 100.0 * unitValue(G.curUnit) + (not G.curUnit.alive) * unitValue(attacked)
             if show:
-                print("Unit @ (%d, %d) attack (%d, %d) (-HP %d %s)" % (*G.curUnit.pos, ci, cj, harm, "" if attacked.alive else "killed"))
-                if counterattack: print("-> Unit @ (%d, %d) counterattack (%d, %d) (-HP %d %s)" % (ci, cj, *G.curUnit.pos, harm2, "" if G.curUnit.alive else "killed"))
+                print("Unit %s @ (%d, %d) attack %s (%d, %d) (-HP %d %s)" % (G.curUnit.Type, *G.curUnit.pos, attacked.Type, ci, cj, harm, "" if attacked.alive else "killed"))
+                if counterattack: print("-> Unit %s @ (%d, %d) counterattack %s (%d, %d) (-HP %d %s)" % (attacked.Type, ci, cj, G.curUnit.Type, *G.curUnit.pos, harm2, "" if G.curUnit.alive else "killed"))
         if len(targetPos) == 0:
             if show: print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
             if reward: attackerRew = 0.0
@@ -393,7 +393,7 @@ class GameStateCtrl:
         if show: G.drawCsrLocation(posList, (250, 130, 130))
         unit_pos = [unit.pos for unit in G.unitList]
         if reward:  attackerRew = 0  # cumulate reward for each attacked enemy
-        if show: print("Unit @ (%d, %d) AOE attack :" % (*G.curUnit.pos,), posList)
+        if show: print("Unit %s @ (%d, %d) AOE attack :" % (G.curUnit.Type, *G.curUnit.pos,), posList)
         for targpos in posList:  # confirmed attack
             attacked = G.unitList[unit_pos.index(targpos)]#targetUnits[targetPos.index((ci, cj))]
             # Real computation code for attack
@@ -421,7 +421,7 @@ class GameStateCtrl:
             return [0.0 for player in G.playerList]
 
     def stand(G, show=True):
-        if show: print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
+        if show: print("No target. Unit %s @ (%d, %d) stand by" % (G.curUnit.Type, *G.curUnit.pos,))
         G.curUnit.moved = True
         G.curUnit = None
         G.UIstate = SELECT_UNIT
@@ -1209,9 +1209,9 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
 game = GameStateCtrl()
 #%% This demonstrates Two Threat Elimination agents playing with each other.
 game = GameStateCtrl()
-game.unitList.append(Unit(player=2, pos=(10, 4), cfg=StoneManCfg))
+# game.unitList.append(Unit(player=2, pos=(10, 4), cfg=StoneManCfg))
 game.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
-game.unitList.append(Unit(player=2, pos=(13, 5), cfg=CatapultCfg))
+# game.unitList.append(Unit(player=2, pos=(13, 5), cfg=CatapultCfg))
 # game.GUI_loop()
 # game.endTurn()
 # This is the basic loop for playing an action sequence step by step
