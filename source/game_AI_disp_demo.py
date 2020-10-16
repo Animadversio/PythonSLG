@@ -832,7 +832,7 @@ def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
             nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
             nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
             if move[0] in ["move"]:
-                nextrisk += (riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit) # can mask out more...
+                nextrisk += max(0.0, riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit) # can mask out more...
             if move[0] in ["AOE", "attack", "stand", "turnover"]:
                 whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk), -nextcumrew + nextrisk * alpha)
                 continue
@@ -886,7 +886,7 @@ def greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.9, alpha=0.2)
             nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
             nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
             if move[0] in ["move"]: # can mask out more the one you attack pose less threat to you
-                nextrisk += (riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
+                nextrisk += max(0.0, riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
             thr_elim_val = 0
             if move[0] is "attack":
                 targ_pos = move[1][0]
@@ -910,7 +910,7 @@ def greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.9, alpha=0.2)
 
 
 
-def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.4, alpha=0.2):
+def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.4, alpha=0.4):
     """Search the action space of selection, move, attack
     Search the action space that maximize
             next step reward + gamma * threat_elim + beta * threat_posing - alpha * risk(pos)
@@ -952,7 +952,7 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
             nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
             nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
             if move[0] in ["move"]: # can mask out more the one you attack pose less threat to you
-                nextrisk += (riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
+                nextrisk += max(0.0, riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
             thr_elim_val = 0
             if move[0] is "attack":
                 targ_pos = move[1][0]

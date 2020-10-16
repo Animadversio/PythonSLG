@@ -14,9 +14,20 @@ $ python main.py
 # How to Play
 * use mouse to select the active creature to walk or attack 
 
-# Demo
-![rpg1](https://raw.githubusercontent.com/marblexu/PythonStrategyRPG/master/demo/rpg1.png)
-![rpg2](https://raw.githubusercontent.com/marblexu/PythonStrategyRPG/master/demo/rpg2.png)
+# Features
+## Game System
+* Unit with AOE magic. Remote and melee unit.
+ 
+## Policy
+Advanced policy for planning multiple unit action is a crucial part of this project. The following policies have been implemented. 
+
+* Greedy reward maximization policy. 
+
+
+
+`![rpg1](https://raw.githubusercontent.com/marblexu/PythonStrategyRPG/master/demo/rpg1.png)`
+`![rpg2](https://raw.githubusercontent.com/marblexu/PythonStrategyRPG/master/demo/rpg2.png)`
+
 
 # Working in Progress
 
@@ -57,6 +68,9 @@ $ python main.py
 - [x] Simple estimation of threat posing on others, and Maximize threat on others, minimize threat posed on me. @Oct.15
 - [x] Efficiency increase by improving the deep clone unit and game state, improve attack range computation by not saving the set. @Oct.15
 - [x] Debug the negative threat elimin value problem @Oct.15
+- [x] Debug the negative risk problem @Oct.15 
+- [ ] Optimize efficiency of the copy of unit
+- [ ] Increase efficiency by approximating greedy policy
 - [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 - [ ] Pre compute a match table to save computation.  
 - [ ] Economy and Unit purchase design. 
