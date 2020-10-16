@@ -54,10 +54,10 @@ $ python main.py
     * Many interesting behavior emerged from this change! Very well done. 
     * Still, it doesn't estimate the potential benefit (2nd order gain) of that position... 
     * This is a first order estimate of next enemy turn lost, but no 2nd order estimate of gain in the next turn..
-[x] Simple estimation of threat posing on others, and Maximize threat on others, minimize threat posed on me.
+[x] Simple estimation of threat posing on others, and Maximize threat on others, minimize threat posed on me. @Oct.15
+[x] Efficiency increase by improving the deep clone unit and game state, improve attack range computation by not saving the set. @Oct.15
 [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 [ ] Pre compute a match table to save computation.  
 [ ] Economy and Unit purchase design. 
-[ ] Efficiency increase in search by improving the deep clone.
 [ ] Ability and Buff design, Heal
 [ ] Ability and Buff design, Summon?

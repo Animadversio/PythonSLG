@@ -29,7 +29,7 @@ class Unit:
         self.pos = pos
         self.alive = True
         self.moved = True
-        self.Buff = [] # Buff is a state
+        self.Buff = []  # Buff is a state
         # cfg
         if cfg is not None:
             for key, val in cfg.items():
@@ -46,6 +46,11 @@ class Unit:
             # self.exp
             # self.level
 
+    def __deepcopy__(self, memodict={}):
+        U = Unit()
+        for key, vals in self.__dict__.items():
+            U.__dict__[key] = deepcopy(vals)
+        return U
 
 # List of Abilities
 HEAVYMACHINE = 6
@@ -80,7 +85,7 @@ SELECT_REMOVTARGET = 5
 SELECT_AOETARGET = 6
 SELECT_HEALTARGET = 7
 class GameStateCtrl:
-    def __init__(G):
+    def __init__(G, withUnit=True):
         G.playerList = [1, 2]
         G.curPlayer = G.playerList[-1] # UIState starts from END_TURN so it will transition into first player
         # G.playerIter = playerIterator(G.playerList)
@@ -91,34 +96,36 @@ class GameStateCtrl:
         G.UIstate = END_TURN
         G.unitList = []
         G.curUnit = None
-        G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
-        G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
-        G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
-        G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
-        G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
-        G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
-        G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
-        G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
-        G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
-        G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
-        G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
-        G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
-        G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
-        G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
-        G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
+        if withUnit:
+            G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
+            G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
+            G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
+            G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
+            G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
+            G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
+            G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
+            G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
+            G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
+            G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
+            G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
+            G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
+            G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
+            G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
+            G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
+            G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
+            G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
+            G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
+            G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
+            G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
+            G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
 
     def __deepcopy__(self, memodict={}):
-        newG = GameStateCtrl()
-        newG.__dict__['screen'] = self.__dict__['screen']
-        for key, vals in self.__dict__.items():
-            if key is 'screen': continue
-            newG.__dict__[key] = deepcopy(vals)
+        newG = copy(self)
+        newG.unitList = [copy(unit) for unit in self.unitList]
+        # newG.__dict__['screen'] = self.__dict__['screen']
+        # for key, vals in self.__dict__.items():
+        #     if key is 'screen': continue
+        #     newG.__dict__[key] = deepcopy(vals)
         if self.curUnit is not None:
             unitId = self.unitList.index(self.curUnit) # re-establish the link between the list and the reference to it.
             newG.curUnit = newG.unitList[unitId]
@@ -245,7 +252,7 @@ class GameStateCtrl:
 
             elif G.UIstate == SELECT_ATTTARGET:
                 attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
-                targetPos, targetUnits = G.getTargetInRange(G.curUnit, attRange)
+                targetPos, targetUnits, _ = G.getTargetInRange(G.curUnit, attRange)
                 G.drawLocation(attRange, (220, 180, 180))  # draw a list of location in one color
                 G.drawCsrLocation(targetPos, (250, 130, 130))
                 if K_confirm:
@@ -328,10 +335,13 @@ class GameStateCtrl:
 
     def attack(G, csr, show=True, reward=False, checklegal=True):
         unitValue = lambda unit: valueDict[unit.Type]  # value function for each value. Should be learnable
-        attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
-        targetPos, targetUnits = G.getTargetInRange(G.curUnit, attRange)
-        if show: G.drawLocation(attRange, (220, 180, 180))  # draw a list of location in one color
-        if show: G.drawCsrLocation(targetPos, (250, 130, 130))
+        if show:
+            attRange = G.getAttackRange(G.curUnit.pos, G.curUnit.AttackRng[0], G.curUnit.AttackRng[1])
+            targetPos, targetUnits, targetDist = G.getTargetInRange(G.curUnit, attRange)
+            G.drawLocation(attRange, (220, 180, 180))  # draw a list of location in one color
+            G.drawCsrLocation(targetPos, (250, 130, 130))
+        else:  # if not show, then combine the attackrange into target finding.
+            targetPos, targetUnits, targetDist = G.getTargetInRange(G.curUnit, None)
         ci, cj = csr
         if (ci, cj) in targetPos:  # confirmed attack
             if show: print("Unit @ (%d, %d) attack (%d, %d)" % (*G.curUnit.pos, ci, cj))
@@ -432,8 +442,9 @@ class GameStateCtrl:
             centPosList, targetPosList = G.getAOETargetInRange(curUnit, attRange, unitList=unitList, radius=1)
             return [("stand", [])] + [("AOE", [cent, posList]) for cent, posList in zip(centPosList, targetPosList)], SELECT_UNIT
         if UIstate is SELECT_ATTTARGET:
-            attRange = G.getAttackRange(curUnit.pos, curUnit.AttackRng[0], curUnit.AttackRng[1])
-            targetPos, targetUnits = G.getTargetInRange(curUnit, attRange, unitList=unitList)
+            # attRange = G.getAttackRange(curUnit.pos, curUnit.AttackRng[0], curUnit.AttackRng[1])
+            # targetPos, targetUnits = G.getTargetInRange(curUnit, attRange, unitList=unitList)
+            targetPos, targetUnits, targetDist = G.getTargetInRange(curUnit, None, unitList=unitList)
             return [("stand", [])] + [("attack", [pos]) for pos in targetPos], SELECT_UNIT
         if UIstate is SELECT_REMOVTARGET:
             raise NotImplementedError
@@ -567,7 +578,8 @@ class GameStateCtrl:
                     tovisit.push(((xx, yy), nextmvp))
         return list(visited)  # list(mvp)
 
-    def getAttackRange(G, pos, LB, UB):  # FIXME: BE MORE EFFICIENT
+    def getAttackRange(G, pos, LB, UB):  # FIXED: BE MORE EFFICIENT, Use double forloop.
+        """Actually this is only necessary for GUI, not for computer! """
         # cost = lambda xx, yy: 1
         x, y = pos
         poslist = set()
@@ -606,16 +618,31 @@ class GameStateCtrl:
                 selectableUnit.append(unit)
         return selectablePos, selectableUnit
 
-    def getTargetInRange(G, curUnit, attRange, unitList=None):
+    def getTargetInRange(G, curUnit, attRange, unitList=None, AttackRng=None):
         """attRange can be None to indicate all opponent units"""
         if unitList is None: unitList = G.unitList
         targetPos = []
         targetUnit = []
-        for unit in unitList:
-            if unit.player is not curUnit.player and (attRange is None or unit.pos in attRange):
-                targetPos.append(unit.pos)
-                targetUnit.append(unit)
-        return targetPos, targetUnit
+        targetDist = []
+        if attRange is None:
+            ci, cj = G.curUnit.pos
+            LB, UB = G.curUnit.AttackRng if AttackRng is None else AttackRng
+            for unit in unitList:
+                if unit.player is not curUnit.player:
+                    attDis = abs(ci - unit.pos[0]) + abs(cj - unit.pos[1])
+                    if LB <= attDis <= UB:
+                        targetPos.append(unit.pos)
+                        targetUnit.append(unit)
+                        targetDist.append(attDis)
+        else:
+            ci, cj = G.curUnit.pos
+            for unit in unitList:
+                if unit.player is not curUnit.player and unit.pos in attRange:
+                    attDis = abs(ci - unit.pos[0]) + abs(cj - unit.pos[1])
+                    targetPos.append(unit.pos)
+                    targetUnit.append(unit)
+                    targetDist.append(attDis)
+        return targetPos, targetUnit, targetDist
 
     def getDxDyList(G, radius):
         dxdy = []
@@ -627,8 +654,10 @@ class GameStateCtrl:
     def getAOETargetInRange(G, curUnit, attRange, unitList=None, radius=1):
         if unitList is None: unitList = G.unitList
         attRange = set(attRange)
-        augAttRange = G.getAttackRange(curUnit.pos, curUnit.AttackRng[0] - radius, curUnit.AttackRng[1] + radius)
-        targetPos, targetUnit = G.getTargetInRange(curUnit, augAttRange, unitList)
+        # augAttRange = G.getAttackRange(curUnit.pos, curUnit.AttackRng[0] - radius, curUnit.AttackRng[1] + radius)
+        # targetPos, targetUnit = G.getTargetInRange(curUnit, augAttRange, unitList) # Increase efficiency!
+        targetPos, targetUnit, targetDist = G.getTargetInRange(curUnit, None, unitList=unitList,
+                            AttackRng=(curUnit.AttackRng[0] - radius, curUnit.AttackRng[1] + radius))
         centerTargetDict = dict()
         for unitpos, unit in zip(targetPos, targetUnit):
             x, y = unitpos
@@ -1164,6 +1193,8 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
 #%%
 # game = GameStateCtrl()
 # game.GUI_loop()
+#%%
+game = GameStateCtrl()
 #%% This demonstrates Two Threat Elimination agents playing with each other.
 game = GameStateCtrl()
 # game.GUI_loop()
