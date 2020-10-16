@@ -54,7 +54,7 @@ $ python main.py
     * Many interesting behavior emerged from this change! Very well done. 
     * Still, it doesn't estimate the potential benefit (2nd order gain) of that position... 
     * This is a first order estimate of next enemy turn lost, but no 2nd order estimate of gain in the next turn..
-[ ] Simple estimation of threat posing on others, and Maximize threat on others, minimize threat posed on me.
+[x] Simple estimation of threat posing on others, and Maximize threat on others, minimize threat posed on me.
 [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 [ ] Pre compute a match table to save computation.  
 [ ] Economy and Unit purchase design. 
