@@ -1236,7 +1236,7 @@ while not Exitflag:
         # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
         # best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
         # best_seq, best_state, best_rew = greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.7, alpha=0.15)
-        best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.7, alpha=0.8) #gamma=0.7, beta=0.4, alpha=0.15)
+        best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.5, alpha=0.6) #gamma=0.7, beta=0.4, alpha=0.15)
         # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
         # best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
         _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
