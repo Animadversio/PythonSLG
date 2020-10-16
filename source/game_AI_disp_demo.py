@@ -260,16 +260,16 @@ class GameStateCtrl:
                         print("Unit @ (%d, %d) attack (%d, %d)" % (*G.curUnit.pos, ci, cj))
                         attacked = targetUnits[targetPos.index((ci, cj))]
                         # Real computation code for attack
-                        harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
-                        attacked.HP -= max(harm, 1)
+                        harm = max(1, int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence)
+                        attacked.HP -= harm
                         if attacked.HP <= 0:
                             attacked.alive = False
                             G.unitList.pop(G.unitList.index(attacked))
                         attDis = abs(ci - G.curUnit.pos[0]) + abs(cj - G.curUnit.pos[1])
                         counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
                         if counterattack:
-                            harm2 = int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence
-                            G.curUnit.HP -= max(harm2, 1)
+                            harm2 = max(1, int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence)
+                            G.curUnit.HP -= harm2
                             # FIXED: Currently Attacker and Attacked could Die together!
                             if G.curUnit.HP <= 0:
                                 G.curUnit.alive = False
@@ -344,25 +344,33 @@ class GameStateCtrl:
             targetPos, targetUnits, targetDist = G.getTargetInRange(G.curUnit, None)
         ci, cj = csr
         if (ci, cj) in targetPos:  # confirmed attack
-            if show: print("Unit @ (%d, %d) attack (%d, %d)" % (*G.curUnit.pos, ci, cj))
             attacked = targetUnits[targetPos.index((ci, cj))]
             # Real computation code for attack
-            harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence  # - tile.Defence
-            attacked.HP -= max(harm, 1)
-            if attacked.HP <= 0:
+            harm = max(1, int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence)  # - tile.Defence
+            if attacked.HP - harm <= 0: # FIX over kill problem
+                harm = attacked.HP
+                attacked.HP = 0
                 attacked.alive = False
                 G.unitList.pop(G.unitList.index(attacked))
-            if reward: attackerRew = harm / 100.0 * unitValue(attacked) + (not attacked.alive) * unitValue(attacked)
+            else:
+                attacked.HP -= harm
+            if reward: attackerRew = harm / 100.0 * unitValue(attacked) + (not attacked.alive) * unitValue(attacked) # no over reward for over kill
             attDis = abs(ci - G.curUnit.pos[0]) + abs(cj - G.curUnit.pos[1])
             counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
             if counterattack:
-                harm2 = int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence
-                G.curUnit.HP -= max(harm2, 1)
+                harm2 = max(1, int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence)
                 # FIXED: Currently Attacker and Attacked could Die together!
-                if G.curUnit.HP <= 0:
+                if G.curUnit.HP - harm2 <= 0:
+                    harm2 = G.curUnit.HP
+                    G.curUnit.HP = 0
                     G.curUnit.alive = False
                     G.unitList.pop(G.unitList.index(G.curUnit))
+                else:
+                    G.curUnit.HP -= harm2
                 if reward: attackerRew -= harm2 / 100.0 * unitValue(G.curUnit) + (not G.curUnit.alive) * unitValue(attacked)
+            if show:
+                print("Unit @ (%d, %d) attack (%d, %d) (-HP %d %s)" % (*G.curUnit.pos, ci, cj, harm, "" if attacked.alive else "killed"))
+                if counterattack: print("-> Unit @ (%d, %d) counterattack (%d, %d) (-HP %d %s)" % (ci, cj, *G.curUnit.pos, harm2, "" if G.curUnit.alive else "killed"))
         if len(targetPos) == 0:
             if show: print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
             if reward: attackerRew = 0.0
@@ -390,13 +398,16 @@ class GameStateCtrl:
             attacked = G.unitList[unit_pos.index(targpos)]#targetUnits[targetPos.index((ci, cj))]
             # Real computation code for attack
             # harm = int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence
-            harm = G.curUnit.Attack - attacked.Defence  # AOE Magic don't suffer from HP loss #FIXME
+            harm = max(1, G.curUnit.Attack - attacked.Defence)  # AOE Magic don't suffer from HP loss #FIXME
             isEnemy = 1 if G.curUnit.player != attacked.player else -1  # AOE can harm friemd team!
-            attacked.HP -= max(harm, 1)
-            if attacked.HP <= 0:
+            if attacked.HP - harm <= 0:
+                harm = attacked.HP
+                attacked.HP = 0
                 attacked.alive = False
                 G.unitList.pop(G.unitList.index(attacked))
                 unit_pos = [unit.pos for unit in G.unitList]
+            else:
+                attacked.HP -= harm
             if reward: attackerRew += isEnemy * (harm / 100.0 * unitValue(attacked) + (not attacked.alive) * unitValue(attacked))
         G.curUnit.moved = True
         G.curUnit = None
@@ -589,6 +600,7 @@ class GameStateCtrl:
             for dy in range(max(LB - abs(dx), 0), UB - abs(dx) + 1):
                 poslist.add((x + dx, y + dy))
         return list(poslist)
+        # Older BFS naive version.
         # tovisit = Queue()
         # tovisit.push((pos, 0))
         # visited = set()
@@ -693,16 +705,16 @@ class GameStateCtrl:
     def getCombatStats(G, attacker, attacked, atkrpos=None, atkdpos=None):
         if atkrpos is None: atkrpos = attacker.pos
         if atkdpos is None: atkdpos = attacked.pos
-        harm = int(attacker.Attack / 100.0 * attacker.HP) - attacked.Defence  # - tile[atkdpos].Defence
-        atkd_HP_aft = attacked.HP - max(harm, 1)
+        harm = max(1, int(attacker.Attack / 100.0 * attacker.HP) - attacked.Defence)  # - tile[atkdpos].Defence
+        atkd_HP_aft = attacked.HP - harm
         atkd_alive = True
         if atkd_HP_aft <= 0:  atkd_alive = False
         attDis = abs(atkrpos[0] - atkdpos[0]) + abs(atkrpos[1] - atkdpos[1])
         counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and atkd_alive  # and bla bla bla
         harm2, atkr_alive = 0, True
         if counterattack:
-            harm2 = int(attacked.Attack / 100.0 * atkd_HP_aft) - attacker.Defence  # - tile[atkrpos].Defence
-            atkr_HP_aft = attacker.HP - max(harm2, 1)
+            harm2 = max(1, int(attacked.Attack / 100.0 * atkd_HP_aft) - attacker.Defence)  # - tile[atkrpos].Defence
+            atkr_HP_aft = attacker.HP - harm2
             if atkr_HP_aft <= 0:  atkr_alive = False
         # Compute reward value
         atkrReward = harm / 100.0 * unitPrice(attacked) + (not atkd_alive) * unitPrice(attacked)
@@ -1197,6 +1209,9 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
 game = GameStateCtrl()
 #%% This demonstrates Two Threat Elimination agents playing with each other.
 game = GameStateCtrl()
+game.unitList.append(Unit(player=2, pos=(10, 4), cfg=StoneManCfg))
+game.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
+game.unitList.append(Unit(player=2, pos=(13, 5), cfg=CatapultCfg))
 # game.GUI_loop()
 # game.endTurn()
 # This is the basic loop for playing an action sequence step by step
@@ -1221,7 +1236,7 @@ while not Exitflag:
         # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
         # best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
         # best_seq, best_state, best_rew = greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.7, alpha=0.15)
-        best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.7, beta=0.4, alpha=0.15)
+        best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.7, alpha=0.8) #gamma=0.7, beta=0.4, alpha=0.15)
         # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
         # best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
         _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)

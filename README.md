@@ -69,6 +69,8 @@ Advanced policy for planning multiple unit action is a crucial part of this proj
 - [x] Efficiency increase by improving the deep clone unit and game state, improve attack range computation by not saving the set. @Oct.15
 - [x] Debug the negative threat elimin value problem @Oct.15
 - [x] Debug the negative risk problem @Oct.15 
+- [x] Debug the reward calculation negative problem.... @Oct.15
+- [x] Debug the overkill over reward problem @Oct.15
 - [ ] Optimize efficiency of the copy of unit
 - [ ] Increase efficiency by approximating greedy policy
 - [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
