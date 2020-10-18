@@ -72,8 +72,8 @@ Advanced policy for planning multiple unit action is a crucial part of this proj
 - [x] Debug the reward calculation negative problem.... @Oct.15
 - [x] Debug the overkill over reward problem @Oct.15
 - [x] Add more printing interface @oCT.15
+- [x] Increase efficiency by approximating greedy policy @Oct.17-18
 - [ ] Optimize efficiency of the copy of unit
-- [ ] Increase efficiency by approximating greedy policy
 - [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 - [ ] Pre compute a match table to save computation.  
 - [ ] Economy and Unit purchase design. 

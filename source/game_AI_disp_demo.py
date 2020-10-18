@@ -697,7 +697,7 @@ class GameStateCtrl:
         AtkMvPairs = []
         for movpos in valMovRange:
             for tarpos, tarUnit in zip(allEnemyPos, allEnemyUnit):
-                if LB <= abs(movpos[0] - tarpos[0]) + abs(movpos[1] - tarpos[1]) <= UB:
+                if LB <= (abs(movpos[0] - tarpos[0]) + abs(movpos[1] - tarpos[1])) <= UB:
                     AtkMvPairs.append([("move", [movpos]), ("attack", [tarpos]), tarUnit])
                     # Evaluation func
         return AtkMvPairs
@@ -804,6 +804,42 @@ def greedyPolicy(game, show=True, perm=False):
     best_seq, best_state, best_rew = whole_movseqs.pop()
     if show: print("DFS finished %.2f sec, best rew %d" % (time() - T0, best_rew))
     return best_seq, best_state, best_rew
+
+def greedyPolicy_approx(game, show=True, perm=False):
+    """Search the action space of selection, move, attack
+    that maximize
+            next step reward
+    """
+    T0 = time()
+    # movseq_col = Stack()
+    # movseq_col.push(([], 0, game))
+    whole_movseqs = PriorityQueue()  # [] #
+    # while not movseq_col.isEmpty():
+        # actseq, cumrew, curGame = movseq_col.pop()
+    if curGame.UIstate == SELECT_MOVTARGET:
+        AtkMvPairs = curGame.getMovAttPair() # FIXME for AOE unit. 
+        for movact, atkact, attackedUnit in AtkMvPairs:
+            harm, atkd_alive, harm2, atkr_alive, atkrReward = curGame.getCombatStats(curGame.curUnit, 
+                    attacked, atkrpos=movact[1][0], atkdpos=atkact[1][0])
+            whole_movseqs.push(([movact, atkact], atkrReward), -atkrReward)
+
+        # moves, nextUIstate = curGame.getPossibleMoves()
+        # if perm: shuffle(moves)  # moves = [moves[i] for i in permutation(len(moves))]
+        # for move in moves:  #
+        #     next_actseq = copy(actseq)
+        #     next_actseq.append(move)
+        #     nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
+        #     nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
+        #     if move[0] in ["AOE","attack","stand","turnover"]:
+        #         whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew)
+        #         continue
+        #     # move = choice(moves)
+        #     movseq_col.push((next_actseq, nextcumrew, nextGame))
+    # print(whole_movseqs)
+    best_seq, best_rew = whole_movseqs.pop()
+    if show: print("Approx Action maximization finished %.2f sec, best rew %d" % (time() - T0, best_rew))
+    return best_seq, None, best_rew
+
 
 def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
     """
@@ -1067,6 +1103,9 @@ def threat_pos(game, pos, oppoPolicy=greedyPolicy, policyParam={}):
     hypo_game.UIstate = SELECT_MOVTARGET
     bestenemy_seq, bestenemy_state, bestenemy_rew = oppoPolicy(hypo_game, show=False, **policyParam)
     return bestenemy_rew, bestenemy_seq
+
+
+
 
 def threat_general(game, curPlayer, oppoPolicy=greedyPolicy, policyParam={}):
     hypo_game = deepcopy(game)
