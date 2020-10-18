@@ -72,7 +72,9 @@ Advanced policy for planning multiple unit action is a crucial part of this proj
 - [x] Debug the reward calculation negative problem.... @Oct.15
 - [x] Debug the overkill over reward problem @Oct.15
 - [x] Add more printing interface @oCT.15
-- [x] Increase efficiency by approximating greedy policy @Oct.17-18
+- [x] Increase efficiency by approximating greedy policy and merging movement and attack planning! @Oct.17-18
+    * This change is SO EFFECTIVE that planning time is lower than .5 sec for each side now! 
+    * Implement approximate fast search for AOE as well! 
 - [ ] Optimize efficiency of the copy of unit
 - [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 - [ ] Pre compute a match table to save computation.  

@@ -61,7 +61,7 @@ SoldierCfg = {"Type": "Soldier", "HP": 100, "Attack": 55, "Defence": 10, "Movepn
 ArcherCfg = {"Type": "Archer", "HP": 100, "Attack": 45, "Defence":  5, "Movepnt": 4, "AttackRng": (2, 2), "Ability": [], "ExtraAct": [],}
 KnightCfg = {"Type": "Knight", "HP": 100, "Attack": 60, "Defence":  15, "Movepnt": 6, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
 CatapultCfg = {"Type": "Catapult", "HP": 100, "Attack": 70, "Defence":  5, "Movepnt": 3, "AttackRng": (3, 7), "Ability": [HEAVYMACHINE, ], "ExtraAct": [], }
-StoneManCfg = {"Type": "StoneMan", "HP": 100, "Attack": 60, "Defence":  40, "Movepnt": 4, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
+StoneManCfg = {"Type": "StoneMan", "HP": 100, "Attack": 60, "Defence":  35, "Movepnt": 4, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
 StormSummonerCfg = {"Type": "StormSummoner", "HP": 100, "Attack": 30, "Defence":  5, "Movepnt": 4, "AttackRng": (2, 7), "Ability": [], "ExtraAct": [STORM], }
 
 valueDict = {"Soldier": 100, "Archer": 150, "Knight": 400, "Catapult": 700,
@@ -74,7 +74,7 @@ def playerIterator(playerList):
         turn += 1
         for player in playerList: # and player is alive
             yield player, turn
-
+from collections import defaultdict
 # UIState Definition
 END_TURN = 0
 SELECT_UNIT = 1
@@ -686,6 +686,8 @@ class GameStateCtrl:
         return centerPos, targetPosList, # targetUnitList
 
     def getMovAttPair(G, curUnit, unitList=None, radius=1):
+        """This calculation is offline, not assuming the unit is moved or not.
+        This calculation is super efficient! """
         if unitList is None: unitList = G.unitList
         unit_pos = set([unit.pos for unit in unitList if
                     unit is not curUnit])  # other unit's position. Or you cannot stay put
@@ -693,14 +695,28 @@ class GameStateCtrl:
         movRange = set(G.getMovRange(curUnit.pos, curUnit.Movepnt, obst_pos))
         valMovRange = movRange.difference(unit_pos)
         LB, UB = curUnit.AttackRng
-        allEnemyPos, allEnemyUnit = G.getAllEnemyUnit(unitList)
+        allEnemyPos, allEnemyUnit = G.getAllEnemyUnit(unitList) # assuming curPlayer is player of the curUnit
         AtkMvPairs = []
+        MvStandPairs = [] # no attack no reward
+        AOEAtkPairs = []
+        canSTORM = STORM in curUnit.ExtraAct
         for movpos in valMovRange:
+            if canSTORM: centerTargetDict = defaultdict(set)
             for tarpos, tarUnit in zip(allEnemyPos, allEnemyUnit):
-                if LB <= (abs(movpos[0] - tarpos[0]) + abs(movpos[1] - tarpos[1])) <= UB:
+                tarDist = (abs(movpos[0] - tarpos[0]) + abs(movpos[1] - tarpos[1]))
+                if LB <= tarDist <= UB:
                     AtkMvPairs.append([("move", [movpos]), ("attack", [tarpos]), tarUnit])
-                    # Evaluation func
-        return AtkMvPairs
+                if canSTORM and LB - radius <= tarDist <= UB + radius:
+                    x, y = tarpos
+                    for dx, dy in G.getDxDyList(radius):
+                        xx, yy = x + dx, y + dy
+                        if LB <= (abs(movpos[0] - xx) + abs(movpos[1] - yy)) <= UB:
+                            centerTargetDict[(xx, yy)].add(tarpos)
+            if canSTORM: AOEAtkPairs.extend(
+                    [[("move", [movpos]), ("AOE", [cent, posList])] for cent, posList in centerTargetDict.items()])
+            # Evaluation func
+            MvStandPairs.append([("move", [movpos]), ("stand", [])])  # no attack just stand.
+        return AtkMvPairs, MvStandPairs, AOEAtkPairs
 
     def getCombatStats(G, attacker, attacked, atkrpos=None, atkdpos=None):
         if atkrpos is None: atkrpos = attacker.pos
@@ -721,6 +737,24 @@ class GameStateCtrl:
         if counterattack:
             atkrReward -= harm2 / 100.0 * unitPrice(attacker) + (not atkr_alive) * unitPrice(attacker)
         return harm, atkd_alive, harm2, atkr_alive, atkrReward
+
+    def getAOEStats(G, attacker, attackedPoses, ):
+        harms = []
+        alives = []
+        AOEReward = 0
+        unit_pos = [unit.pos for unit in G.unitList]
+        for targpos in attackedPoses:
+            attacked = G.unitList[unit_pos.index(targpos)]
+            harm = max(1, attacker.Attack - attacked.Defence)  # AOE Magic don't suffer from HP loss #FIXME
+            isEnemy = 1 if attacker.player != attacked.player else -1  # AOE can harm friemd team!
+            if attacked.HP - harm <= 0:
+                harm = attacked.HP
+                alives.append(False)
+            else:
+                alives.append(True)
+            harms.append(attacked.HP)
+            AOEReward += isEnemy * (harm / 100.0 * unitPrice(attacked) + (not attacked.alive) * unitPrice(attacked))
+        return harms, alives, AOEReward
 
     def getUnitAttackCoverage(G, curUnit, movRange=None, unitList=None):
         if unitList is None: unitList = G.unitList
@@ -811,34 +845,34 @@ def greedyPolicy_approx(game, show=True, perm=False):
             next step reward
     """
     T0 = time()
-    # movseq_col = Stack()
-    # movseq_col.push(([], 0, game))
-    whole_movseqs = PriorityQueue()  # [] #
-    # while not movseq_col.isEmpty():
-        # actseq, cumrew, curGame = movseq_col.pop()
-    if curGame.UIstate == SELECT_MOVTARGET:
-        AtkMvPairs = curGame.getMovAttPair() # FIXME for AOE unit. 
+    whole_movseqs = PriorityQueue()
+    if game.UIstate == SELECT_MOVTARGET and game.curUnit is not None:
+        """Best move after selecting an unit."""
+        AtkMvPairs, MvStandPairs, AOEAtkPairs = game.getMovAttPair(game.curUnit)  # FIXME for AOE unit.
         for movact, atkact, attackedUnit in AtkMvPairs:
-            harm, atkd_alive, harm2, atkr_alive, atkrReward = curGame.getCombatStats(curGame.curUnit, 
-                    attacked, atkrpos=movact[1][0], atkdpos=atkact[1][0])
+            harm, atkd_alive, harm2, atkr_alive, atkrReward = game.getCombatStats(game.curUnit,
+                    attackedUnit, atkrpos=movact[1][0], atkdpos=atkact[1][0])
             whole_movseqs.push(([movact, atkact], atkrReward), -atkrReward)
-
-        # moves, nextUIstate = curGame.getPossibleMoves()
-        # if perm: shuffle(moves)  # moves = [moves[i] for i in permutation(len(moves))]
-        # for move in moves:  #
-        #     next_actseq = copy(actseq)
-        #     next_actseq.append(move)
-        #     nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
-        #     nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
-        #     if move[0] in ["AOE","attack","stand","turnover"]:
-        #         whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew)
-        #         continue
-        #     # move = choice(moves)
-        #     movseq_col.push((next_actseq, nextcumrew, nextGame))
-    # print(whole_movseqs)
+        if perm: shuffle(MvStandPairs)
+        for movact, standact in MvStandPairs:
+            whole_movseqs.push(([movact, standact], 0), 0.0)
+    elif game.UIstate == SELECT_UNIT:
+        selectablePos, selectableUnits = game.getSelectableUnit(unitList=None, curPlayer=None)
+        for selPos, selUnit in zip(selectablePos, selectableUnits):
+            AtkMvPairs, MvStandPairs, AOEAtkPairs = game.getMovAttPair(selUnit)  # FIXME for AOE unit.
+            for movact, atkact, attackedUnit in AtkMvPairs:
+                harm, atkd_alive, harm2, atkr_alive, atkrReward = game.getCombatStats(selUnit,
+                                              attackedUnit, atkrpos=movact[1][0], atkdpos=atkact[1][0])
+                whole_movseqs.push(([("select", [selPos]), movact, atkact], atkrReward), -atkrReward)
+            for movact, AOEact in AOEAtkPairs:
+                harms, alives, AOEReward = game.getAOEStats(selUnit, AOEact[1][1], )
+                whole_movseqs.push(([("select", [selPos]), movact, AOEact], AOEReward), -AOEReward)
+            if perm: shuffle(MvStandPairs)
+            for movact, standact in MvStandPairs:
+                whole_movseqs.push(([("select", [selPos]), movact, standact], 0), 0.0)
     best_seq, best_rew = whole_movseqs.pop()
     if show: print("Approx Action maximization finished %.2f sec, best rew %d" % (time() - T0, best_rew))
-    return best_seq, None, best_rew
+    return best_seq, None, best_rew # None is the state.
 
 
 def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
@@ -957,7 +991,6 @@ def greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.9, alpha=0.2)
     return best_seq, best_state, best_rew
 
 
-
 def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.4, alpha=0.4):
     """Search the action space of selection, move, attack
     Search the action space that maximize
@@ -1015,7 +1048,8 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
             # print("Threat Value reduced by %.1f" % (thr_elim_val))
             threat_posing = 0.0 # This simulation is too slow, need a better way to estimate it.
             if move[0] in ["AOE", "attack", "stand"]:
-                threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit)
+                # threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit)
+                threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit, oppoPolicy=greedyPolicy_approx)
             if move[0] in ["AOE", "attack", "stand", "turnover"]:
                 whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk, thr_elim_val, threat_posing),
                                    -nextcumrew + nextrisk * alpha - threat_posing * beta - thr_elim_val * gamma)
@@ -1250,6 +1284,7 @@ game = GameStateCtrl()
 game = GameStateCtrl()
 # game.unitList.append(Unit(player=2, pos=(10, 4), cfg=StoneManCfg))
 game.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
+# game.unitList.append(Unit(player=2, pos=(12, 0), cfg=StormSummonerCfg))
 # game.unitList.append(Unit(player=2, pos=(13, 5), cfg=CatapultCfg))
 # game.GUI_loop()
 # game.endTurn()
