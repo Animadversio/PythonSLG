@@ -1001,7 +1001,7 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
     allEnemyPos, allEnemyUnit = game.getAllEnemyUnit()
     threat_dict = {}
     enemyCoverSets = {}
-    harmValues = {}  # The attack value weighted by its HP.
+    harmValues = {}  # The attack value discounted by its HP.
     for pos, unit in zip(allEnemyPos, allEnemyUnit):
         coverSet = game.getUnitAttackCoverage(unit,)
         enemyCoverSets[pos] = coverSet
@@ -1049,6 +1049,77 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
             threat_posing = 0.0 # This simulation is too slow, need a better way to estimate it.
             if move[0] in ["AOE", "attack", "stand"]:
                 # threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit)
+                threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit, oppoPolicy=greedyPolicy_approx)
+            if move[0] in ["AOE", "attack", "stand", "turnover"]:
+                whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk, thr_elim_val, threat_posing),
+                                   -nextcumrew + nextrisk * alpha - threat_posing * beta - thr_elim_val * gamma)
+                continue
+            movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
+    # print(whole_movseqs)
+    best_seq, best_state, best_rew, bestrisk, best_threat_elim, best_thr_posing = whole_movseqs.pop()
+    if show: print("DFS finished %.2f sec, best rew %d, least risk %d, threat elim %d, threat posing %d" %
+                   (time() - T0, best_rew, bestrisk, best_threat_elim, best_thr_posing))
+    return best_seq, best_state, best_rew
+#%%
+def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, beta=0.4, alpha=0.4):
+    """Search the action space of selection, move, attack
+    Search the action space that maximize
+            next step reward + gamma * threat_elim + beta * threat_posing - alpha * risk(pos)
+    """
+    T0 = time()
+    # Chart the enemy's coverages
+    allEnemyPos, allEnemyUnit = game.getAllEnemyUnit()
+    threat_dict = {}
+    enemyCoverSets = {}
+    harmValues = {}  # The attack value discounted by its HP.
+    for pos, unit in zip(allEnemyPos, allEnemyUnit):
+        coverSet = game.getUnitAttackCoverage(unit,)
+        enemyCoverSets[pos] = coverSet
+        harmValues[pos] = unit.Attack * unit.HP / 100.0
+        threat_bef, _ = threat_pos(game, pos)
+        threat_dict[pos] = threat_bef
+    threat_bsl, _ = threat_general(game, game.curPlayer, oppoPolicy=greedyPolicy_approx)
+    def riskFun(pos, mask=[]):
+        risk = 0.0
+        for tarPos, coverSet in enemyCoverSets.items():
+            if tarPos in mask: continue # the unit you just attacked...
+            if pos in coverSet:
+                # risk += harmValues[tarPos]
+                risk = max(risk, harmValues[tarPos])
+        return risk
+
+    movseq_col = Stack()
+    movseq_col.push(([], 0, 0, game))
+    whole_movseqs = PriorityQueue()  # [] #
+    while not movseq_col.isEmpty():
+        actseq, cumrew, cumrisk, curGame = movseq_col.pop()
+        # if curGame.UIstate == SELECT_MOVTARGET:
+        moves, nextUIstate = curGame.getPossibleMoves()
+        if perm: shuffle(moves)  # moves = [moves[i] for i in permutation(len(moves))]
+        for move in moves:  #
+            nextrisk = cumrisk
+            next_actseq = copy(actseq)
+            next_actseq.append(move)
+            nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
+            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
+            if move[0] in ["move"]: # can mask out more the one you attack pose less threat to you
+                nextrisk += max(0.0, riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
+            thr_elim_val = 0.0
+            if move[0] is ["AOE", "attack", "stand"]: # this is threat elimination in gloval sense
+                thr_reduc_val, thr_reduc_mov = threat_general(curGame, game.curPlayer, oppoPolicy=greedyPolicy_approx)
+                thr_elim_val = threat_bsl - thr_reduc_val
+            #     targ_pos = move[1][0]
+            #     threat_bef = threat_dict[targ_pos]
+            #     harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0  # should be positive now
+            #     thr_elim_val += threat_bef * harmPercent  # This is less accurate
+            # if move[0] is "AOE":
+            #     for targ_pos in move[1][1]:  # targetPosList for AOE attack
+            #         threat_bef = threat_dict[targ_pos]
+            #         harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0  # should be positive now
+            #         thr_elim_val += threat_bef * harmPercent
+            # print("Threat Value reduced by %.1f" % (thr_elim_val))
+            threat_posing = 0.0 # This simulation is too slow, need a better way to estimate it.
+            if move[0] in ["AOE", "attack", "stand"]:
                 threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit, oppoPolicy=greedyPolicy_approx)
             if move[0] in ["AOE", "attack", "stand", "turnover"]:
                 whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk, thr_elim_val, threat_posing),
@@ -1112,7 +1183,8 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
 # Threat of a unit, computed by recursive algorithm.
 # from numpy.random import permutation
 from random import shuffle
-def threat_unit(game, unit, oppoPolicy=greedyPolicy, policyParam={}):
+def threat_unit(game, unit, oppoPolicy=greedyPolicy_approx, policyParam={}):
+    """Under oppopolicy, the other sides best move to achieve the maximal harm with a unit"""
     hypo_game = deepcopy(game)
     if unit.player is not hypo_game.curPlayer:
         hypo_game.endTurn(show=False)
@@ -1123,7 +1195,7 @@ def threat_unit(game, unit, oppoPolicy=greedyPolicy, policyParam={}):
     bestenemy_seq, bestenemy_state, bestenemy_rew = oppoPolicy(hypo_game, show=False, **policyParam)
     return bestenemy_rew, bestenemy_seq
 
-def threat_pos(game, pos, oppoPolicy=greedyPolicy, policyParam={}):
+def threat_pos(game, pos, oppoPolicy=greedyPolicy_approx, policyParam={}):
     hypo_game = deepcopy(game)
     poslist = [unit.pos for unit in hypo_game.unitList]
     if pos not in poslist: # maybe that unit has died...
@@ -1139,15 +1211,15 @@ def threat_pos(game, pos, oppoPolicy=greedyPolicy, policyParam={}):
     return bestenemy_rew, bestenemy_seq
 
 
-
-
-def threat_general(game, curPlayer, oppoPolicy=greedyPolicy, policyParam={}):
+def threat_general(game, curPlayer, oppoPolicy=greedyPolicy_approx, policyParam={}):
     hypo_game = deepcopy(game)
     if curPlayer is hypo_game.curPlayer:
         hypo_game.endTurn(show=False)
     # hypo_game.selectUnit(pos)
     # hypo_game.curUnit = unit
     # hypo_game.UIstate = SELECT_MOVTARGET
+    hypo_game.curUnit = None
+    hypo_game.UIstate = SELECT_UNIT
     bestenemy_seq, bestenemy_state, bestenemy_rew = oppoPolicy(hypo_game, show=False, **policyParam)
     return bestenemy_rew, bestenemy_seq
 
@@ -1279,11 +1351,54 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
 # game = GameStateCtrl()
 # game.GUI_loop()
 #%%
-game = GameStateCtrl()
+G = GameStateCtrl(withUnit=False)
+G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 6), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 7), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 5), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 6), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(4, 7), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 6), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 5), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 2), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
+G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
+G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
+G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
+G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
+G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
+G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
+G.unitList.append(Unit(player=2, pos=(10, 4), cfg=KnightCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
+G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 5), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 1), cfg=StoneManCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(11, 1), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(13, 2), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
+G.GUI_loop()
 #%% This demonstrates Two Threat Elimination agents playing with each other.
-game = GameStateCtrl()
+game = G
+# game.endTurn()
+# game = GameStateCtrl()
 # game.unitList.append(Unit(player=2, pos=(10, 4), cfg=StoneManCfg))
-game.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
+# game.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
 # game.unitList.append(Unit(player=2, pos=(12, 0), cfg=StormSummonerCfg))
 # game.unitList.append(Unit(player=2, pos=(13, 5), cfg=CatapultCfg))
 # game.GUI_loop()
@@ -1291,32 +1406,35 @@ game.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
 # This is the basic loop for playing an action sequence step by step
 #%
 Exitflag = False
-Moveflag = False
 automove = True
+SingleUnitTurn = False # Each player is allowed to move only one unit in a turn. If false then can move all
 while not Exitflag:
-    Moveflag = automove
+    Moveflag = automove # if True then without key tab, it's keeping moving.
     for event in pg.event.get():
         if event.type == pg.QUIT:
             Exitflag = True
         if event.type == pg.KEYDOWN:
             if event.key == pg.K_TAB:
-                Moveflag=True
+                Moveflag = True
     if Moveflag:
         game.drawBackground()
         game.drawUnitList()
         pg.display.update()
-        # game.endTurn() # Each side move one unit each turn!
-
+        if SingleUnitTurn: game.endTurn() # Each side move one unit each turn!
         # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
         # best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
         # best_seq, best_state, best_rew = greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.7, alpha=0.15)
-        best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.5, alpha=0.6) #gamma=0.7, beta=0.4, alpha=0.15)
+        # best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.5, alpha=0.6) #gamma=0.7, beta=0.4, alpha=0.15)
+        best_seq, best_state, best_rew = greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, beta=0.5,
+                                                                      alpha=0.6)
         # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
         # best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
         _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
         game.drawBackground()
         game.drawUnitList()
         pg.display.update()
+        enemyPos, enemyUnit = game.getAllEnemyUnit()
+        if len(enemyUnit)==0:  Exitflag=True
 
 #%%
 
