@@ -4,6 +4,7 @@ from source.util import Queue, Stack, PriorityQueue
 from random import choice
 from time import time
 from copy import copy, deepcopy
+# Setup window and screen
 pg.display.set_caption("SLG board")
 SCREEN = pg.display.set_mode((800,500)) # get screen
 screen = pg.display.get_surface()
@@ -13,7 +14,7 @@ font = pg.font.SysFont("microsoftsansserif", 16, bold=True)
 # Utility to detect DoubleClick
 dbclock = pg.time.Clock()
 DOUBLECLICKTIME = 250
-
+# Color, Layout Constants 
 LIGHTYELLOW = (247, 238, 214)
 MAP_WIDTH = 800
 MAP_HEIGHT = 500
@@ -62,9 +63,13 @@ ArcherCfg = {"Type": "Archer", "HP": 100, "Attack": 45, "Defence":  5, "Movepnt"
 KnightCfg = {"Type": "Knight", "HP": 100, "Attack": 60, "Defence":  15, "Movepnt": 6, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
 CatapultCfg = {"Type": "Catapult", "HP": 100, "Attack": 70, "Defence":  5, "Movepnt": 3, "AttackRng": (3, 7), "Ability": [HEAVYMACHINE, ], "ExtraAct": [], }
 StoneManCfg = {"Type": "StoneMan", "HP": 100, "Attack": 60, "Defence":  35, "Movepnt": 4, "AttackRng": (1, 1), "Ability": [], "ExtraAct": [],}
-StormSummonerCfg = {"Type": "StormSummoner", "HP": 100, "Attack": 30, "Defence":  5, "Movepnt": 4, "AttackRng": (2, 7), "Ability": [], "ExtraAct": [STORM], }
+StormSummonerCfg = {"Type": "StormSummoner", "HP": 100, "Attack": 30, "Defence":  5, "Movepnt": 4, "AttackRng": (2, 6), "Ability": [], "ExtraAct": [STORM], }
 
+CfgDict = {"Soldier": SoldierCfg, "Archer": ArcherCfg, "Knight": KnightCfg, "Catapult": CatapultCfg, 
+             "StoneMan": StoneManCfg, "StormSummoner": StormSummonerCfg, }
 valueDict = {"Soldier": 100, "Archer": 150, "Knight": 400, "Catapult": 700,
+             "StoneMan": 600, "StormSummoner": 600}
+priceDict = {"Soldier": 100, "Archer": 150, "Knight": 400, "Catapult": 700,
              "StoneMan": 600, "StormSummoner": 600}
 unitPrice = lambda unit: valueDict[unit.Type]
 #%%
@@ -74,6 +79,7 @@ def playerIterator(playerList):
         turn += 1
         for player in playerList: # and player is alive
             yield player, turn
+
 from collections import defaultdict
 # UIState Definition
 END_TURN = 0
@@ -81,22 +87,25 @@ SELECT_UNIT = 1
 SELECT_ACTION = 2
 SELECT_MOVTARGET = 3
 SELECT_ATTTARGET = 4
-SELECT_REMOVTARGET = 5
+SELECT_BUY = 5
 SELECT_AOETARGET = 6
 SELECT_HEALTARGET = 7
+SELECT_REMOVTARGET = 8
 class GameStateCtrl:
     def __init__(G, withUnit=True):
         G.playerList = [1, 2]
         G.curPlayer = G.playerList[-1] # UIState starts from END_TURN so it will transition into first player
+        G.playerFund = [0, 100]
+        G.playerIncome = [100, 100]
         # G.playerIter = playerIterator(G.playerList)
         G.curTurn = 0
         G.screen = screen
-        G.mapH = screen.get_height() // TileW
+        G.mapH = screen.get_height() // TileW # FIXME, screen and mapsize can decouple
         G.mapW = screen.get_width() // TileW
         G.UIstate = END_TURN
         G.unitList = []
         G.curUnit = None
-        if withUnit:
+        if withUnit: # a default chess board configuration
             G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
             G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
             G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
@@ -120,7 +129,10 @@ class GameStateCtrl:
             G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
 
     def __deepcopy__(self, memodict={}):
-        newG = copy(self)
+        """ Key function to accelerate the tree search process """
+        # Do a shallow copy for most things as they are basic datatype. 
+        # Screen will do a reference copy. 
+        newG = copy(self) 
         newG.unitList = [copy(unit) for unit in self.unitList]
         # newG.__dict__['screen'] = self.__dict__['screen']
         # for key, vals in self.__dict__.items():
@@ -132,7 +144,7 @@ class GameStateCtrl:
         return newG
 
     def playerIterator(G):
-        """This is really handy function but cause much pain!"""
+        """This is really handy function but cause much pain when copying!"""
         turn = 0
         while True:
             turn += 1
@@ -140,13 +152,13 @@ class GameStateCtrl:
                 yield player, turn
 
     def GUI_loop(G, GUI=True, csr_pos=(5, 6)):
-        """This is less hierarchical, more linear programming style"""
-        ci, cj = csr_pos # csr is a GUI concept not a gameState
+        """This is less hierarchical, more linear programming style game loop"""
+        ci, cj = csr_pos # csr is a construct in GUI not a gameState, not stored
         Exitflag = False
 
         button1 = pg.Rect(105, 100, 40, 25)
         button2 = pg.Rect(105, 125, 40, 25)
-        while not Exitflag:
+        while not Exitflag: # Main Event Loop
             # Input Processor
             K_confirm = False
             K_cancel = False
@@ -284,23 +296,30 @@ class GameStateCtrl:
                 if K_cancel:
                     G.curUnit.pos = ui_orig, uj_orig
                     G.UIstate = SELECT_MOVTARGET
+            elif G.UIstate == SELECT_BUY:
+                G.drawBuyScreen()
+                if K_cancel:
+                    G.UIstate = SELECT_UNIT
+
             # drawUnits(screen, [(ui, uj)])  # gameState
             G.drawUnitList(G.unitList)
-            G.drawCsrLocation([(ci, cj)])  # draw a list of location in one color
+            G.drawCsrLocation([(ci, cj)])  # Csr on top of Unit. 
             pg.display.update()
 
     def endTurn(G, show=True):
         # nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
         curIdx = G.playerList.index(G.curPlayer)
         if curIdx == len(G.playerList) - 1:
-            nextTurn, nextPlayer = G.curTurn + 1, G.playerList[0]
+            nextTurn, nextPlayer, nextIdx = G.curTurn + 1, G.playerList[0], 0
         else:
-            nextTurn, nextPlayer = G.curTurn, G.playerList[curIdx + 1]
+            nextTurn, nextPlayer, nextIdx = G.curTurn, G.playerList[curIdx + 1], curIdx + 1
         # Do sth at turn over
         for unit in G.unitList:
             if unit.player is nextPlayer: unit.moved = False
             if unit.player is G.curPlayer: unit.moved = True
-        if show: print("Turn Changed, Next player %d, Turn %d"%(nextPlayer, nextTurn))
+        G.playerFund[nextIdx] += G.playerIncome[nextIdx]  # Get the income this turn
+        if show: print("Turn Changed, Next player %d, Turn %d. Income %d, Current Fund %d"
+            %(nextPlayer, nextTurn, G.playerIncome[nextIdx], G.playerFund[nextIdx]))
         G.curPlayer, G.curTurn = nextPlayer, nextTurn
         G.UIstate = SELECT_UNIT
 
@@ -313,6 +332,19 @@ class GameStateCtrl:
             if show: print("Unit %s selected (%d, %d)" % (G.curUnit.Type, *csr, ))
         else:
             raise ValueError
+
+    def buyUnit(G, csr, unittype, show=True, checklegal=True):
+        G.curIdx = G.playerList.index(G.curPlayer)
+        if G.playerFund[G.curIdx] >= priceDict[unittype]: 
+            G.playerFund[G.curIdx] -= priceDict[unittype]
+        else:
+            if show: print("Not enough fund, cannot buy %s"%unittype)
+            return
+        newUnit = Unit(player=G.curPlayer, pos=csr, cfg=CfgDict[unittype])
+        newUnit.moved = False  # specify whether a newly bought unit could move at first gen. 
+        if show: print("Buy unit %s at (%d, %d)"%(unittype, *csr))
+        G.unitList.append(newUnit)
+        G.UIstate = SELECT_UNIT
 
     def move(G, csr, show=True, checklegal=True):
         # ci, cj = csr
@@ -427,6 +459,7 @@ class GameStateCtrl:
         G.UIstate = SELECT_UNIT
 
     def getPossibleMoves(G, UIstate=None, curUnit=None, unitList=None):
+        """ Get Action Space for Given state. Key for AI algor"""
         if UIstate is None: UIstate = G.UIstate
         if curUnit is None: curUnit = G.curUnit
         if unitList is None: unitList = G.unitList
@@ -434,7 +467,7 @@ class GameStateCtrl:
             selectable_pos, _ = G.getSelectableUnit(unitList=unitList)
             if len(selectable_pos) > 0:
                 return [("select", [pos]) for pos in selectable_pos], SELECT_UNIT
-            else: # turn over is available if there is no unit to select
+            else:  # turn over is available if there is no unit to select
                 return [("turnover", [])], SELECT_UNIT
         if UIstate is SELECT_MOVTARGET:
             unit_pos = [unit.pos for unit in unitList if unit is not curUnit] # other unit's position. Or you cannot stay put
@@ -463,6 +496,13 @@ class GameStateCtrl:
             return [("turnover", [])], SELECT_UNIT
 
     def action_execute(self, action_type, param=[], clone=False, show=True, reward=False, checklegal=True):
+        """
+        clone: Either copy game state and execute the transition or inplace change the current game State
+        checklegal: A flag sent into the specific action functions, whether or not check the action is legal
+            (e.g. attacking nowhere, move to obstacle). During model based searching, all actions proposed will be
+            legal, so no need for that. But for User in the loop scenario, need more checking.
+        show: print the action or not. 
+        """
         G = deepcopy(self) if clone else self
         rewards = [0.0 for player in G.playerList]
         if action_type is "turnover":
@@ -471,7 +511,7 @@ class GameStateCtrl:
             G.selectUnit(param[0], show=show)
         if action_type is "move":
             G.move(param[0], show=show, checklegal=checklegal)
-        if action_type is "useAttack":
+        if action_type is "useAttack":  # Change UIstate, nothing really happens 
             G.UIstate = SELECT_ATTTARGET
         if action_type is "useStorm":
             G.UIstate = SELECT_AOETARGET
@@ -486,7 +526,7 @@ class GameStateCtrl:
         return G, rewards
 
     def action_seq_execute(self, actseq, clone=False, show=True, reward=False, checklegal=True):
-        """Sequential version of `action_execute`"""
+        """Sequential version of `action_execute` return cumulated reward from this sequence"""
         G = deepcopy(self) if clone else self
         cum_rewards = [0.0 for player in G.playerList]
         for action_type, param in actseq:
@@ -657,6 +697,7 @@ class GameStateCtrl:
         return targetPos, targetUnit, targetDist
 
     def getDxDyList(G, radius):
+        """Small utility function to get dx, dy pairs within an L1 radius"""
         dxdy = []
         for dx in range(-radius, radius + 1):
             for dy in range(-radius+abs(dx), radius-abs(dx)+1):
