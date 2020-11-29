@@ -16,6 +16,7 @@ dbclock = pg.time.Clock()
 DOUBLECLICKTIME = 250
 # Color, Layout Constants 
 LIGHTYELLOW = (247, 238, 214)
+LIGHTBLUE = (214, 220, 247)
 MAP_WIDTH = 800
 MAP_HEIGHT = 500
 TileW = 50
@@ -23,7 +24,7 @@ Margin = 2
 CsrWidth = 5
 UMargin = 20
 playerColor = {1: (20, 20, 20), 2: (120, 20, 20)} # Color for each player number 
-
+#%% Units
 class Unit:
     def __init__(self, player, pos, cfg=None):
         self.player = player
@@ -73,6 +74,40 @@ priceDict = {"Soldier": 100, "Archer": 150, "Knight": 400, "Catapult": 700,
              "StoneMan": 600, "StormSummoner": 600}
 unitPrice = lambda unit: valueDict[unit.Type]
 #%%
+showpos = [(3, 7), (4, 7), (5, 7), (6, 7), (7, 7), (8, 7)]
+buyUnitPosMap = {pos:unitType for pos, unitType in zip(showpos, priceDict.keys())}
+#%% Buildings
+class Building:
+    def __init__(self, player, pos, cfg=None):
+        self.player = player
+        self.pos = pos
+        self.broken = False
+        # self.Buff = []  # Buff is a state
+        if cfg is not None:
+            for key, val in cfg.items():
+                self.__setattr__(key, val)
+        else:
+            self.Type = ""
+            self.HP = 100
+            self.TileAtk = 0
+            self.TileDef = 0
+            self.TileHeal = 0
+            self.Earn = 0
+            self.Props = []
+
+    def __deepcopy__(self, memodict={}):
+        B = Building(self.player, self.pos)
+        for key, vals in self.__dict__.items():
+            B.__dict__[key] = deepcopy(vals)
+        return B
+
+PURCHASE = 1
+HEAL = 2
+OCCUPIABLE = 3
+CastleCfg = {"Type": "Castle", "TileAtk": 0, "TileDef": 15, "HP": 100, "Props": [PURCHASE, OCCUPIABLE], "Earn": 100}
+VillageCfg = {"Type": "Village", "TileAtk": 0, "TileDef": 25, "HP": 100, "Props": [HEAL, OCCUPIABLE], "Earn": 50}
+Building(None, (1, 1), CastleCfg)
+#%%
 def playerIterator(playerList):
     turn = 0
     while True:
@@ -92,8 +127,9 @@ SELECT_AOETARGET = 6
 SELECT_HEALTARGET = 7
 SELECT_REMOVTARGET = 8
 class GameStateCtrl:
-    def __init__(G, withUnit=True):
+    def __init__(G, withUnit=True, withBuilding=True):
         G.playerList = [1, 2]
+        G.curIdx = len(G.playerList) - 1
         G.curPlayer = G.playerList[-1] # UIState starts from END_TURN so it will transition into first player
         G.playerFund = [0, 100]
         G.playerIncome = [100, 100]
@@ -104,7 +140,15 @@ class GameStateCtrl:
         G.mapW = screen.get_width() // TileW
         G.UIstate = END_TURN
         G.unitList = []
+        G.buildingList = []
         G.curUnit = None
+        G.curBldg = None
+        if withBuilding:
+            G.buildingList.append(Building(player=1, pos=(1, 1), cfg=CastleCfg))
+            G.buildingList.append(Building(player=2, pos=(13, 7), cfg=CastleCfg))
+            G.buildingList.append(Building(player=1, pos=(1, 2), cfg=VillageCfg))
+            G.buildingList.append(Building(player=2, pos=(13, 8), cfg=VillageCfg))
+
         if withUnit: # a default chess board configuration
             G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
             G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
@@ -134,14 +178,23 @@ class GameStateCtrl:
         # Screen will do a reference copy. 
         newG = copy(self) 
         newG.unitList = [copy(unit) for unit in self.unitList]
+        newG.buildingList = [copy(bldg) for bldg in self.buildingList]
+        newG.playerFund = copy(self.playerFund)
+        newG.playerIncome = copy(self.playerIncome)
         # newG.__dict__['screen'] = self.__dict__['screen']
         # for key, vals in self.__dict__.items():
         #     if key is 'screen': continue
         #     newG.__dict__[key] = deepcopy(vals)
         if self.curUnit is not None:
-            unitId = self.unitList.index(self.curUnit) # re-establish the link between the list and the reference to it.
+            # curUnit is referencing the unit in current unitList, not the one in the previous object.
+            # re-establish the link between the list and the reference to it.
+            unitId = self.unitList.index(self.curUnit)
             newG.curUnit = newG.unitList[unitId]
         return newG
+
+    def __lt__(self, other):
+        """A very crude comparison function for GameState"""
+        return len(self.unitList) < len(other.unitList)
 
     def playerIterator(G):
         """This is really handy function but cause much pain when copying!"""
@@ -192,29 +245,36 @@ class GameStateCtrl:
 
             if G.UIstate is END_TURN:
                 # nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
-                curIdx = G.playerList.index(G.curPlayer)
-                if curIdx == len(G.playerList) - 1:
-                    nextTurn, nextPlayer = G.curTurn + 1, G.playerList[0]
-                else:
-                    nextTurn, nextPlayer = G.curTurn, G.playerList[curIdx + 1]
-                # Do sth at turn over
-                for unit in G.unitList:
-                    if unit.player is nextPlayer: unit.moved = False
-                    if unit.player is G.curPlayer: unit.moved = True
-                G.curPlayer, G.curTurn = nextPlayer, nextTurn
-                G.UIstate = SELECT_UNIT
+
+                G.endTurn()
+                # curIdx = G.playerList.index(G.curPlayer)
+                # if curIdx == len(G.playerList) - 1:
+                #     nextTurn, nextPlayer = G.curTurn + 1, G.playerList[0]
+                # else:
+                #     nextTurn, nextPlayer = G.curTurn, G.playerList[curIdx + 1]
+                # # Do sth at turn over
+                # for unit in G.unitList:
+                #     if unit.player is nextPlayer: unit.moved = False
+                #     if unit.player is G.curPlayer: unit.moved = True
+                # G.curPlayer, G.curTurn = nextPlayer, nextTurn
+                # G.UIstate = SELECT_UNIT
                 # drawTurnover(screen)
 
             if G.UIstate == SELECT_UNIT:
                 posDict = {unit.pos: unit for unit in G.unitList}
                 selectable_pos, selectable_unit = G.getSelectableUnit()  # unitList, curPlayer  # add condition for selectable
+                selectable_tilepos, selectable_bldgs = G.getSelectableTile()  # unitList, curPlayer  # add condition for selectable
                 # unit_pos = [unit.pos for unit in unitList
                 #             if unit.player == curPlayer and not unit.moved]  # add condition for selectable
                 if K_confirm and (ci, cj) in selectable_pos:
                     # unitId = unit_pos.index((ci, cj))
                     G.curUnit = posDict[(ci, cj)] # unitList[unitId]
                     G.UIstate = SELECT_MOVTARGET
-                    print("Unit %s selected (%d, %d)"%(G.curUnit.Type, ci, cj))
+                    print("Unit %s selected (%d, %d)" % (G.curUnit.Type, ci, cj))
+                elif K_confirm and (ci, cj) in selectable_tilepos:
+                    G.UIstate = SELECT_BUY
+                    G.curBldg = selectable_bldgs[selectable_tilepos.index((ci, cj))]
+                    print("Location (%d, %d) selected" % (ci, cj))
 
             elif G.UIstate == SELECT_MOVTARGET:
                 unit_pos = [unit.pos for unit in G.unitList if unit is not G.curUnit]
@@ -298,29 +358,41 @@ class GameStateCtrl:
                     G.UIstate = SELECT_MOVTARGET
             elif G.UIstate == SELECT_BUY:
                 G.drawBuyScreen()
+                if K_confirm:
+                    if (ci, cj) in buyUnitPosMap:
+                        unitType = buyUnitPosMap[(ci, cj)]
+                        # if priceDict[unitType] <= G.playerFund[G.curIdx]:
+                        G.buyUnit(G.curBldg.pos, unitType)
                 if K_cancel:
                     G.UIstate = SELECT_UNIT
 
             # drawUnits(screen, [(ui, uj)])  # gameState
+            G.drawBuildingList()
             G.drawUnitList(G.unitList)
             G.drawCsrLocation([(ci, cj)])  # Csr on top of Unit. 
             pg.display.update()
 
     def endTurn(G, show=True):
         # nextPlayer, nextTurn = next(G.playerIter)  # playerList[playerList.index(curPlayer)+1]
-        curIdx = G.playerList.index(G.curPlayer)
-        if curIdx == len(G.playerList) - 1:
+        # curIdx = G.playerList.index(G.curPlayer)
+        if G.curIdx == len(G.playerList) - 1:
             nextTurn, nextPlayer, nextIdx = G.curTurn + 1, G.playerList[0], 0
         else:
-            nextTurn, nextPlayer, nextIdx = G.curTurn, G.playerList[curIdx + 1], curIdx + 1
+            nextTurn, nextPlayer, nextIdx = G.curTurn, G.playerList[G.curIdx + 1], G.curIdx + 1
         # Do sth at turn over
         for unit in G.unitList:
             if unit.player is nextPlayer: unit.moved = False
             if unit.player is G.curPlayer: unit.moved = True
-        G.playerFund[nextIdx] += G.playerIncome[nextIdx]  # Get the income this turn
+        # Re calculate the income for this player at turn change
+        G.playerIncome[nextIdx] = 0.0
+        for bldg in G.buildingList:
+            if bldg.player == nextPlayer:
+                G.playerIncome[nextIdx] += bldg.Earn
+        # Get the income this turn
+        G.playerFund[nextIdx] += G.playerIncome[nextIdx]  
         if show: print("Turn Changed, Next player %d, Turn %d. Income %d, Current Fund %d"
             %(nextPlayer, nextTurn, G.playerIncome[nextIdx], G.playerFund[nextIdx]))
-        G.curPlayer, G.curTurn = nextPlayer, nextTurn
+        G.curPlayer, G.curIdx, G.curTurn = nextPlayer, nextIdx, nextTurn
         G.UIstate = SELECT_UNIT
 
     def selectUnit(G, csr, show=True):
@@ -338,11 +410,12 @@ class GameStateCtrl:
         if G.playerFund[G.curIdx] >= priceDict[unittype]: 
             G.playerFund[G.curIdx] -= priceDict[unittype]
         else:
-            if show: print("Not enough fund, cannot buy %s"%unittype)
+            if show: print("Not enough fund, cannot afford %s"%unittype)
+            G.UIstate = SELECT_UNIT
             return
         newUnit = Unit(player=G.curPlayer, pos=csr, cfg=CfgDict[unittype])
         newUnit.moved = False  # specify whether a newly bought unit could move at first gen. 
-        if show: print("Buy unit %s at (%d, %d)"%(unittype, *csr))
+        if show: print("Buy unit %s at (%d, %d)" % (unittype, *csr))
         G.unitList.append(newUnit)
         G.UIstate = SELECT_UNIT
 
@@ -459,16 +532,26 @@ class GameStateCtrl:
         G.UIstate = SELECT_UNIT
 
     def getPossibleMoves(G, UIstate=None, curUnit=None, unitList=None):
-        """ Get Action Space for Given state. Key for AI algor"""
+        """ Get Legal Action Space for Given state.
+        This is a key API for policy algorithms. """
         if UIstate is None: UIstate = G.UIstate
         if curUnit is None: curUnit = G.curUnit
         if unitList is None: unitList = G.unitList
         if UIstate is SELECT_UNIT:
             selectable_pos, _ = G.getSelectableUnit(unitList=unitList)
-            if len(selectable_pos) > 0:
-                return [("select", [pos]) for pos in selectable_pos], SELECT_UNIT
-            else:  # turn over is available if there is no unit to select
-                return [("turnover", [])], SELECT_UNIT
+            selectable_tilepos, _ = G.getSelectableTile()
+            legalActs = [("turnover", [])]
+            if len(selectable_pos) > 0: # select unit here
+                # legalActs = legalActs[1:] # Allow or not allow turnover when there is still feasible acts.
+                legalActs += [("select", [pos]) for pos in selectable_pos] # , SELECT_UNIT
+            # else:  # turn over is available if there is no unit to select
+            if len(selectable_tilepos) > 0:  # buy units here.
+                curFund = G.playerFund[G.curIdx]
+                affordableTypes = [type for type, price in priceDict.items() if price <= curFund]
+                for pos in selectable_tilepos:
+                    legalActs += [("buy", [pos, unitType]) for unitType in affordableTypes]
+            # return [("turnover", [])], SELECT_UNIT
+            return legalActs, SELECT_UNIT
         if UIstate is SELECT_MOVTARGET:
             unit_pos = [unit.pos for unit in unitList if unit is not curUnit] # other unit's position. Or you cannot stay put
             obst_pos = G.getObstacleInRange(curUnit, None, unitList=unitList)
@@ -509,6 +592,8 @@ class GameStateCtrl:
             G.endTurn(show=show)
         if action_type is "select":
             G.selectUnit(param[0], show=show)
+        if action_type is "buy":
+            G.buyUnit(param[0], param[1], show=show, checklegal=checklegal)
         if action_type is "move":
             G.move(param[0], show=show, checklegal=checklegal)
         if action_type is "useAttack":  # Change UIstate, nothing really happens 
@@ -535,6 +620,8 @@ class GameStateCtrl:
                 G.endTurn(show=show)
             elif action_type is "select":
                 G.selectUnit(param[0], show=show)
+            elif action_type is "buy":
+                G.buyUnit(param[0], param[1], show=show, checklegal=checklegal)
             elif action_type is "move":
                 G.move(param[0], show=show, checklegal=checklegal)
             elif action_type is "useAttack":
@@ -574,6 +661,49 @@ class GameStateCtrl:
             pg.draw.rect(G.screen, color,
                  pg.Rect(i * TileW + Margin + CsrWidth/2, j * TileW + Margin + CsrWidth/2, TileW - 2*Margin - CsrWidth, TileW - 2*Margin - CsrWidth), CsrWidth)
 
+    def drawBuyScreen(G, ):
+        # tmpUnitList
+        # G.drawUnitList(tmpUnitList)
+        pg.draw.rect(G.screen, LIGHTBLUE, pg.Rect(5*Margin, 5*Margin, MAP_WIDTH-10*Margin, MAP_HEIGHT-10*Margin), 0)
+        showpos = [(3, 7), (4, 7), (5, 7), (6, 7), (7, 7), (8, 7)]
+        for i, j in showpos:
+            pg.draw.rect(G.screen, (200, 200, 200),
+                pg.Rect(i*TileW+Margin, j*TileW+Margin, TileW-2*Margin, TileW-2*Margin))
+
+        curFund = G.playerFund[G.curIdx]
+        for unitpos, (unitType, price) in zip(showpos, priceDict.items()):
+            i, j = unitpos
+            if unitType is "Soldier":
+                pg.draw.rect(G.screen, playerColor[G.curPlayer],
+                 pg.Rect(i * TileW + UMargin/2, j * TileW + UMargin/2, TileW - UMargin, TileW - UMargin))
+            elif unitType is "Archer":
+                pg.draw.circle(G.screen, playerColor[G.curPlayer], (int((i+1/2) * TileW), int((j+1/2) * TileW)),
+                               (TileW - UMargin) // 2 )
+            elif unitType is "Catapult":
+                pg.draw.polygon(G.screen, playerColor[G.curPlayer], [(int((i  ) * TileW), int((j + 1 / 2) * TileW)),
+                                                                    (int((i + 1 / 2) * TileW), int((j + 1) * TileW)),
+                                                                    (int((i + 1) * TileW), int((j + 1 / 2) * TileW)),
+                                                                    (int((i + 1 / 2) * TileW), int((j) * TileW)),] )
+            elif unitType is "Knight":
+                pg.draw.polygon(G.screen, playerColor[G.curPlayer], [(int((i  ) * TileW), int((j ) * TileW)),
+                                                                    (int((i + 1 ) * TileW), int((j ) * TileW)),
+                                                                    (int((i + 1 / 2) * TileW), int((j + 1) * TileW)), ] )
+            elif unitType is "StoneMan":
+                pg.draw.polygon(G.screen, playerColor[G.curPlayer], [(int((i + 1) * TileW), int((j + 2 / 4) * TileW)),
+                                                                     (int((i + 3 / 4) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i + 1 / 4) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i) * TileW), int((j + 2 / 4) * TileW)),
+                                                                    (int((i + 1 / 4) * TileW), int((j + 3 / 4) * TileW)),
+                                                                    (int((i + 3 / 4) * TileW), int((j + 3 / 4) * TileW)), ] )
+            elif unitType is "StormSummoner":
+                pg.draw.polygon(G.screen, playerColor[G.curPlayer], [(int((i) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i + 1) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i + 3 / 4) * TileW), int((j + 3 / 4) * TileW)),
+                                                                    (int((i + 1 / 4) * TileW), int((j + 3 / 4) * TileW)), ] )
+            Pricecolor = (160, 20, 20) if price > curFund else (20, 160, 20) # different HP color denotes moved or un-moved unit
+            img = font.render('%d' % price, True, Pricecolor)
+            screen.blit(img, ((i + 1) * TileW - 28, (j +1) * TileW - 18))
+
     def drawUnitList(G, UnitList=None, ):
         """# Really draw unit lists!Represent different types of units with shapes"""
         if UnitList is None: UnitList = G.unitList
@@ -607,9 +737,44 @@ class GameStateCtrl:
                                                                     (int((i + 1) * TileW), int((j + 1 / 4) * TileW)),
                                                                     (int((i + 3 / 4) * TileW), int((j + 3 / 4) * TileW)),
                                                                     (int((i + 1 / 4) * TileW), int((j + 3 / 4) * TileW)), ] )
-            HPcolor = (160, 20, 20) if unit.moved else (20, 160, 20)
+            HPcolor = (160, 20, 20) if unit.moved else (20, 160, 20) # different HP color denotes moved or un-moved unit
             img = font.render('%d' % unit.HP, True, HPcolor)
             screen.blit(img, ((i + 1) * TileW - 28, (j +1) * TileW - 18))
+
+    def drawBuildingList(G, buildingList=None, ):
+        """# Really draw unit lists!Represent different types of units with shapes"""
+        if buildingList is None: buildingList = G.buildingList
+        for bldg in buildingList:
+            # if not unit.alive: continue
+            i, j = bldg.pos
+            if bldg.Type is "Castle":
+                pg.draw.polygon(G.screen, playerColor[bldg.player],[(int((i) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i + 1) * TileW), int((j + 1 / 4) * TileW)),
+                                                                    (int((i + 6.5 / 8) * TileW), int((j + 3 / 8) * TileW)),
+                                                                    (int((i + 6.5 / 8) * TileW), int((j + 7 / 8) * TileW)),
+                                                                    (int((i + 1.5 / 8) * TileW), int((j + 7 / 8) * TileW)),
+                                                                    (int((i + 1.5 / 8) * TileW), int((j + 3 / 8) * TileW)), ], 3)
+            elif bldg.Type is "Village":
+                pg.draw.polygon(G.screen, playerColor[bldg.player], [(int((i + 0.5 / 8) * TileW), int((j + 3 / 8) * TileW)),
+                                                                     (int((i + 2 / 4) * TileW), int((j + 0.5 / 8) * TileW)),
+                                                                     (int((i + 7.5 / 8) * TileW), int((j + 3 / 8) * TileW)),
+                                                                     (int((i + 3 / 4) * TileW), int((j + 3 / 8) * TileW)),
+                                                                     (int((i + 3 / 4) * TileW), int((j + 6 / 8) * TileW)),
+                                                                     (int((i + 1 / 4) * TileW), int((j + 6 / 8) * TileW)),
+                                                                     (int((i + 1 / 4) * TileW), int((j + 3 / 8) * TileW)), ], 3)
+
+    def getSelectableTile(G, curPlayer=None, buildingList=None):
+        if curPlayer is None: curPlayer = G.curPlayer
+        if buildingList is None: buildingList = G.buildingList
+        unitPoses = set(unit.pos for unit in G.unitList)
+        selectablePos = []
+        selectableTile = []
+        for bldg in buildingList:
+            if bldg.player == curPlayer and PURCHASE in bldg.Props:
+                if bldg.pos in unitPoses: continue
+                selectablePos.append(bldg.pos)
+                selectableTile.append(bldg)
+        return selectablePos, selectableTile
 
     def getMovRange(G, pos, movpnt, obstacles=[]):
         cost = lambda xx, yy: 1 if (xx, yy) not in obstacles else 1E5
@@ -837,6 +1002,7 @@ class GameStateCtrl:
 #%% Heuristic Policies
 """ Policies """
 def randomPolicy(game, oneunit=False):
+    """Select random action from the legal action space"""
     T0 = time()
     actseq, cumrew, curGame = [], 0, deepcopy(game)
     while True:
@@ -1237,6 +1403,7 @@ def threat_unit(game, unit, oppoPolicy=greedyPolicy_approx, policyParam={}):
     return bestenemy_rew, bestenemy_seq
 
 def threat_pos(game, pos, oppoPolicy=greedyPolicy_approx, policyParam={}):
+    """Fix it, """
     hypo_game = deepcopy(game)
     poslist = [unit.pos for unit in hypo_game.unitList]
     if pos not in poslist: # maybe that unit has died...
@@ -1433,7 +1600,53 @@ G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
 G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
 G.unitList.append(Unit(player=2, pos=(13, 2), cfg=CatapultCfg))
 G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
-G.GUI_loop()
+# G.GUI_loop()
+#%% Setup the chess board
+G = GameStateCtrl(withUnit=False)
+G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 6), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 7), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 5), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 6), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 7), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(4, 8), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 7), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 6), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 5), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 2), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
+G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
+G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
+G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
+G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
+G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
+G.unitList.append(Unit(player=2, pos=(10, 4), cfg=KnightCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
+G.unitList.append(Unit(player=2, pos=(10, 6), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 5), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 3), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 1), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
+# G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(11, 1), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(13, 2), cfg=CatapultCfg))
+# G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
+# G.GUI_loop()
 #%% This demonstrates Two Threat Elimination agents playing with each other.
 game = G
 # game.endTurn()
@@ -1459,6 +1672,7 @@ while not Exitflag:
                 Moveflag = True
     if Moveflag:
         game.drawBackground()
+        game.drawBuildingList()
         game.drawUnitList()
         pg.display.update()
         if SingleUnitTurn: game.endTurn() # Each side move one unit each turn!
@@ -1472,6 +1686,7 @@ while not Exitflag:
         # best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
         _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
         game.drawBackground()
+        game.drawBuildingList()
         game.drawUnitList()
         pg.display.update()
         enemyPos, enemyUnit = game.getAllEnemyUnit()

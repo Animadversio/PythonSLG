@@ -12,18 +12,23 @@ It is a strategy turn based game, inspired by code in PythonStrategyRPG, game me
 $ python main.py
 
 # How to Play
-* use mouse to select the active creature to walk or attack 
+* use mouse or 4 direction arrows to select the active creature, then to walk, attack or use magic
+* Press Tab to end turn.
+* Press 1,2 to select action.  
 
 # Features
 ## Game System
-* Unit with AOE magic. Remote and melee unit.
+* Unit with AOE magic. Remote and melee unit. Far reaching siege unit. 
+
  
 ## Policy
-Advanced policy for planning multiple unit action is a crucial part of this project. The following policies have been implemented. 
+Advanced policy for planning multiple unit action coordination is a crucial part of this project. The following policies have been implemented. 
 
-* Greedy reward maximization policy. 
-
-
+* Greedy one step reward maximization policy. 
+* Greedy one step reward maximization, with heuristics
+    * position maximize threat posing on others
+    * Position minimize danger posed by opponent units.
+    * Attack unit that eliminate the most threat posed by it. 
 
 `![rpg1](https://raw.githubusercontent.com/marblexu/PythonStrategyRPG/master/demo/rpg1.png)`
 `![rpg2](https://raw.githubusercontent.com/marblexu/PythonStrategyRPG/master/demo/rpg2.png)`
@@ -75,9 +80,16 @@ Advanced policy for planning multiple unit action is a crucial part of this proj
 - [x] Increase efficiency by approximating greedy policy and merging movement and attack planning! @Oct.17-18
     * This change is SO EFFECTIVE that planning time is lower than .5 sec for each side now! 
     * Implement approximate fast search for AOE as well! 
-- [ ] Optimize efficiency of the copy of unit
+- [x] Economy and Unit purchase design. 
+    - [x] Add building castle system. 
+    - [x] Add income and funding
+    - [x] Add buying action
+- [x] Make it compatible with previous policies
+- [ ] Occupy and Factory and barrack. 
 - [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
+- [ ] Optimize efficiency of the copy of unit
 - [ ] Pre compute a match table to save computation.  
-- [ ] Economy and Unit purchase design. 
 - [ ] Ability and Buff design, Heal
 - [ ] Ability and Buff design, Summon?
+- [ ] Ability and Buff design, Attack Aura, Defence Aura?
+- [ ] Ability and Buff design, Berserker, Attack + Def + as HP - ?
