@@ -12,13 +12,15 @@ It is a strategy turn based game, inspired by code in PythonStrategyRPG, game me
 $ python main.py
 
 # How to Play
-* use mouse or 4 direction arrows to select the active creature, then to walk, attack or use magic
+* Use mouse or 4 direction arrows to move cursor, double click space or enter to select the active units, then to move, attack or use magic
+* DClick the HQ to purchase units. 
 * Press Tab to end turn.
 * Press 1,2 to select action.  
 
 # Features
 ## Game System
 * Unit with AOE magic. Remote and melee unit. Far reaching siege unit. 
+* Purchasing unit from HeadQuarter or Castle. 
 
  
 ## Policy
@@ -84,7 +86,10 @@ Advanced policy for planning multiple unit action coordination is a crucial part
     - [x] Add building castle system. 
     - [x] Add income and funding
     - [x] Add buying action
-- [x] Make it compatible with previous policies
+- [x] Make it compatible with previous policies, test the game with unit purchasing with the search based AIs. @Dec.3 @Nov.28
+- [ ] Let AI and human play together or AI with different parameters play and compete. 
+- [ ] Add the Monte Carlo Tree Search to the game
+- [ ] Learning based Value or Q evaluation, by self play and offline learning. 
 - [ ] Occupy and Factory and barrack. 
 - [ ] Prune Search tree, making it less expansion! Discard useless moves soon. 
 - [ ] Optimize efficiency of the copy of unit

@@ -367,9 +367,10 @@ class GameStateCtrl:
                     G.UIstate = SELECT_UNIT
 
             # drawUnits(screen, [(ui, uj)])  # gameState
-            G.drawBuildingList()
-            G.drawUnitList(G.unitList)
-            G.drawCsrLocation([(ci, cj)])  # Csr on top of Unit. 
+            if not game.UIstate is SELECT_BUY:
+                G.drawBuildingList()
+                G.drawUnitList(G.unitList)
+                G.drawCsrLocation([(ci, cj)])  # Csr on top of Unit.
             pg.display.update()
 
     def endTurn(G, show=True):
@@ -1620,8 +1621,8 @@ G.unitList.append(Unit(player=1, pos=(4, 6), cfg=KnightCfg))
 G.unitList.append(Unit(player=1, pos=(4, 5), cfg=KnightCfg))
 G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
 G.unitList.append(Unit(player=1, pos=(4, 2), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
 G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
 G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
 G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
@@ -1680,8 +1681,8 @@ while not Exitflag:
         # best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
         # best_seq, best_state, best_rew = greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.7, alpha=0.15)
         # best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.5, alpha=0.6) #gamma=0.7, beta=0.4, alpha=0.15)
-        best_seq, best_state, best_rew = greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, beta=0.5,
-                                                                      alpha=0.6)
+        best_seq, best_state, best_rew = greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, beta=0.6,
+                                                                      alpha=0.3)
         # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
         # best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
         _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
@@ -1693,7 +1694,7 @@ while not Exitflag:
         if len(enemyUnit)==0:  Exitflag=True
 
 #%%
-
+G.GUI_loop()
 
 #%%
 
