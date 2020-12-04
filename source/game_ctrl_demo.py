@@ -1,3 +1,4 @@
+"""Obsolete, non class version of the game."""
 import pygame as pg
 import source.constants as c
 pg.display.set_caption("SLG board")

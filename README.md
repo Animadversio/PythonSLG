@@ -87,7 +87,8 @@ Advanced policy for planning multiple unit action coordination is a crucial part
     - [x] Add income and funding
     - [x] Add buying action
 - [x] Make it compatible with previous policies, test the game with unit purchasing with the search based AIs. @Dec.3 @Nov.28
-- [ ] Let AI and human play together or AI with different parameters play and compete. 
+- [x] Let AI and human play together or AI with different parameters play and compete. 
+- [ ] Make large scale self play possible. 
 - [ ] Add the Monte Carlo Tree Search to the game
 - [ ] Learning based Value or Q evaluation, by self play and offline learning. 
 - [ ] Occupy and Factory and barrack. 
