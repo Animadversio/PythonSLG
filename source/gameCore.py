@@ -1,3 +1,4 @@
+__author__ = 'Animadversio_Binxu'
 import pygame as pg
 from source.util import Queue, Stack, PriorityQueue
 from copy import copy, deepcopy
@@ -892,7 +893,7 @@ class GameStateCtrl:
         return centerPos, targetPosList, # targetUnitList
 
     def getMovAttPair(G, curUnit, unitList=None, radius=1):
-        """This calculation is offline, not assuming the unit is moved or not.
+        """An offline calculation, not assuming the unit is moved or not.
         This calculation is super efficient! """
         if unitList is None: unitList = G.unitList
         unit_pos = set([unit.pos for unit in unitList if
@@ -903,8 +904,8 @@ class GameStateCtrl:
         LB, UB = curUnit.AttackRng
         allEnemyPos, allEnemyUnit = G.getAllEnemyUnit(unitList) # assuming curPlayer is player of the curUnit
         AtkMvPairs = []
-        MvStandPairs = [] # no attack no reward
         AOEAtkPairs = []
+        MvStandPairs = [] # no attack no reward
         canSTORM = STORM in curUnit.ExtraAct
         for movpos in valMovRange:
             if canSTORM: centerTargetDict = defaultdict(set)
@@ -925,6 +926,8 @@ class GameStateCtrl:
         return AtkMvPairs, MvStandPairs, AOEAtkPairs
 
     def getCombatStats(G, attacker, attacked, atkrpos=None, atkdpos=None):
+        """Key func to simulate Combat and output stats for AI usage.
+        An offline calculation, """
         if atkrpos is None: atkrpos = attacker.pos
         if atkdpos is None: atkdpos = attacked.pos
         harm = max(1, int(attacker.Attack / 100.0 * attacker.HP) - attacked.Defence)  # - tile[atkdpos].Defence
@@ -945,6 +948,7 @@ class GameStateCtrl:
         return harm, atkd_alive, harm2, atkr_alive, atkrReward
 
     def getAOEStats(G, attacker, attackedPoses, ):
+        """This is the counterpart for `getCombatStats` but for AOE attack (where there is no counter attack now.)"""
         harms = []
         alives = []
         AOEReward = 0
