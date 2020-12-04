@@ -88,6 +88,9 @@ Advanced policy for planning multiple unit action coordination is a crucial part
     - [x] Add buying action
 - [x] Make it compatible with previous policies, test the game with unit purchasing with the search based AIs. @Dec.3 @Nov.28
 - [x] Let AI and human play together or AI with different parameters play and compete. 
+- [x] Considering buying in threat computation. (adding it to the oppopolicy)
+- [ ] Change the DFS part to more efficient 
+- [ ] Prune the main search to limit to trunk of action sequences. 
 - [ ] Make large scale self play possible. 
 - [ ] Add the Monte Carlo Tree Search to the game
 - [ ] Learning based Value or Q evaluation, by self play and offline learning. 

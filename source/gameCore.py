@@ -285,7 +285,7 @@ class GameStateCtrl:
                     print("Unit %s move (%d, %d) -> (%d, %d)"%(G.curUnit.Type, *G.curUnit.pos, ci, cj))
                     # move(unit, mov2i, mov2j)
                     ui_orig, uj_orig = G.curUnit.pos  # record this just in case user cancels
-                    G.move((ci, cj), show=True, checklegal=True)
+                    G.move((ci, cj), show=False, checklegal=True)
                     # G.curUnit.pos = ci, cj  # ui, uj
                     # G.UIstate = SELECT_ATTTARGET
                     # UIstate = SELECT_ACTION
@@ -317,7 +317,7 @@ class GameStateCtrl:
                     posList = targetPosList[centRange.index((ci, cj))]
                     print("Unit %s (%d, %d) Attack AOE (%d, %d)" % (G.curUnit.Type, *G.curUnit.pos, ci, cj))
                     print(posList)
-                    G.attack_AOE((ci, cj), posList, show=True, reward=True, checklegal=True)
+                    G.attack_AOE((ci, cj), posList, show=False, reward=True, checklegal=True)
 
                 if K_cancel:
                     G.UIstate = SELECT_ACTION
@@ -330,28 +330,30 @@ class GameStateCtrl:
                 if K_confirm:
                     if (ci, cj) in targetPos:  # confirmed attack
                         attacked = targetUnits[targetPos.index((ci, cj))]
-                        print("Unit %s @ (%d, %d) attack %s (%d, %d)" % (G.curUnit.Type, *G.curUnit.pos, attacked.Type, ci, cj))
+                        # print("Unit %s @ (%d, %d) attack %s (%d, %d)" % (G.curUnit.Type, *G.curUnit.pos, attacked.Type, ci, cj))
+                        atkrewards = G.attack((ci, cj), show=True, reward=True, checklegal=True)
                         # Real computation code for attack
-                        harm = max(1, int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence)
-                        attacked.HP -= harm
-                        if attacked.HP <= 0:
-                            attacked.alive = False
-                            G.unitList.pop(G.unitList.index(attacked))
-                        attDis = abs(ci - G.curUnit.pos[0]) + abs(cj - G.curUnit.pos[1])
-                        counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
-                        if counterattack:
-                            harm2 = max(1, int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence)
-                            G.curUnit.HP -= harm2
-                            # FIXED: Currently Attacker and Attacked could Die together!
-                            if G.curUnit.HP <= 0:
-                                G.curUnit.alive = False
-                                G.unitList.pop(G.unitList.index(G.curUnit))
-
-                    if len(targetPos) == 0:
+                    #     harm = max(1, int(G.curUnit.Attack / 100.0 * G.curUnit.HP) - attacked.Defence)
+                    #     attacked.HP -= harm
+                    #     if attacked.HP <= 0:
+                    #         attacked.alive = False
+                    #         G.unitList.pop(G.unitList.index(attacked))
+                    #     attDis = abs(ci - G.curUnit.pos[0]) + abs(cj - G.curUnit.pos[1])
+                    #     counterattack = (attacked.AttackRng[0] <= attDis <= attacked.AttackRng[1]) and attacked.alive # and bla bla bla
+                    #     if counterattack:
+                    #         harm2 = max(1, int(attacked.Attack / 100.0 * attacked.HP) - G.curUnit.Defence)
+                    #         G.curUnit.HP -= harm2
+                    #         # FIXED: Currently Attacker and Attacked could Die together!
+                    #         if G.curUnit.HP <= 0:
+                    #             G.curUnit.alive = False
+                    #             G.unitList.pop(G.unitList.index(G.curUnit))
+                    #
+                    else:  # if len(targetPos) == 0:
                         print("No target. Unit @ (%d, %d) stand by" % (*G.curUnit.pos,))
-                    G.curUnit.moved = True
-                    G.curUnit = None
-                    G.UIstate = SELECT_UNIT
+                        G.stand(show=True)
+                    # G.curUnit.moved = True
+                    # G.curUnit = None
+                    # G.UIstate = SELECT_UNIT
                     # UIstate = SELECT_REMOVTARGET
                 if K_cancel:
                     G.curUnit.pos = ui_orig, uj_orig
@@ -978,6 +980,31 @@ class GameStateCtrl:
         for movpos in movRange:
             coverSet.update(G.getAttackRange(movpos, *curUnit.AttackRng))
         return coverSet
+
+    def getPurchasablePos(G, curPlayer=None, buildingList=None):
+        """Currently the same as `getSelectableTile` Can be different in the future as selectable is more general."""
+        if curPlayer is None: curPlayer = G.curPlayer
+        if buildingList is None: buildingList = G.buildingList
+        unitPoses = set(unit.pos for unit in G.unitList if unit.player is not curPlayer) # TODO, maybe only opposite faction counts
+        viablePos = []
+        viableTile = []
+        for bldg in buildingList:
+            if bldg.player == curPlayer and PURCHASE in bldg.Props:
+                if bldg.pos in unitPoses: continue
+                viablePos.append(bldg.pos)
+                viableTile.append(bldg)
+        return viablePos, viableTile
+
+    def getAffordableUnit(G, curPlayer=None, buypos=None):
+        if curPlayer is None: curPlayer = G.curPlayer
+        affordableUnitType = []
+        affordableUnits = []
+        curIdx = G.playerList.index(curPlayer)
+        for (unitType, price) in priceDict.items():
+            if G.playerFund[curIdx] >= price:
+                affordableUnitType.append(unitType)
+                affordableUnits.append(Unit(player=curPlayer, pos=buypos, cfg=CfgDict[unitType])) # pos will be None here.
+        return affordableUnitType, affordableUnits 
 
     def getAllEnemyUnit(G, unitList=None):
         """"""

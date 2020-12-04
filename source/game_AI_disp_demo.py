@@ -101,7 +101,7 @@ def greedyPolicy_approx(game, show=True, perm=False):
             for movact, standact in MvStandPairs:
                 whole_movseqs.push(([("select", [selPos]), movact, standact], 0), 0.0)
         # Add buying to the considerations here.
-        viablePos = game.getPurchasablePos()
+        viablePos, viableTile = game.getPurchasablePos()
         affordableUnitType, affordableUnits = game.getAffordableUnit()
         for buyPos in viablePos:
             for unitType, buyUnit in zip(affordableUnitType, affordableUnits):
@@ -137,7 +137,7 @@ def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
     for pos, unit in zip(allEnemyPos, allEnemyUnit):
         coverSet = game.getUnitAttackCoverage(unit,)
         enemyCoverSets[pos] = coverSet
-        harmValues[pos] = unit.Attack * unit.HP / 100.0 # TODO, minus the terrain defence
+        harmValues[pos] = unit.Attack * unit.HP / 100.0  # TODO, minus the terrain defence
 
     def riskFun(pos, mask=[]):
         risk = 0.0
@@ -172,7 +172,6 @@ def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
                 continue
             else:  # Search Tree continues
                 movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
-    # print(whole_movseqs)
     best_seq, best_state, best_rew, bestrisk,  = whole_movseqs.pop()
     if show: print("DFS finished %.2f sec, best rew %d, least risk %d" % (time() - T0, best_rew, bestrisk))
     return best_seq, best_state, best_rew
@@ -338,7 +337,6 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
     best_seq, best_state, best_rew = whole_movseqs.pop()
     print("DFS + Threat Reduce finished %.2f sec, best rew %d" % (time() - T0, best_rew))
     return best_seq, best_state, best_rew
-
 
 
 def greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.9, alpha=0.2):
@@ -525,7 +523,7 @@ def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, be
             next_actseq = copy(actseq)
             next_actseq.append(move)
             nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
-            # Evaluate the nextState x this move
+            # Evaluate the nextState x this move, in terms of, accumlated reward, risk, threat posing, threat eliminating
             nextcumrew = cumrew + nextrewards[curGame.curIdx]  # use the reward for this player
             if move[0] in ["move"]:  # can mask out more the one you attack pose less threat to you
                 maxHarm = max(0.0, riskFun(move[1][0], mask=[]) - nextGame.curUnit.Defence)
@@ -540,15 +538,218 @@ def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, be
             threat_posing = 0.0  #
             if move[0] in ["AOE", "attack", "stand"]:
                 threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit, oppoPolicy=greedyPolicy_approx)
-            if move[0] in ["AOE", "attack", "stand", "turnover"]:
+            if move[0] in ["AOE", "attack", "stand", "turnover"]:  # Search Tree terminates
                 whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk, thr_elim_val, threat_posing),
                                    -nextcumrew + nextrisk * alpha - threat_posing * beta - thr_elim_val * gamma)
                 continue
-            movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
+            else:  # Search Tree grows
+                movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
     best_seq, best_state, best_rew, bestrisk, best_threat_elim, best_thr_posing = whole_movseqs.pop()
     if show: print("DFS finished %.2f sec, best rew %d, least risk %d, threat elim %d, threat posing %d" %
                    (time() - T0, best_rew, bestrisk, best_threat_elim, best_thr_posing))
     return best_seq, best_state, best_rew
+
+
+#%%
+# game = GameStateCtrl()
+# game.endTurn()
+# best_seq, best_state, best_rew = ThreatElimPolicy(game)
+# _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+# best_seq, best_state, best_rew = ThreatElimPolicy(game)
+# _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
+# # hypo_game_post = deepcopy(game)
+# hypo_game_post.action_execute("attack", (5,5))
+# hypo_game_post.endTurn()
+# hypo_game_post.selectUnit((5, 5))
+# bestenemy_seq_post, bestenemy_state_post, bestenemy_rew_post = greedyPolicy(hypo_game_post)
+#%%
+# game = GameStateCtrl()
+# game.GUI_loop()
+#%%
+# G = GameStateCtrl(withUnit=False)
+# G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=1, pos=(3, 6), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=1, pos=(3, 7), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
+# G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
+# G.unitList.append(Unit(player=1, pos=(2, 5), cfg=ArcherCfg))
+# G.unitList.append(Unit(player=1, pos=(2, 6), cfg=ArcherCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 7), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 6), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 5), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 2), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
+# G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
+# G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
+# G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
+# G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
+# G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 4), cfg=KnightCfg))
+# # G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 5), cfg=StoneManCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 1), cfg=StoneManCfg))
+# # G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
+# G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
+# G.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
+# G.unitList.append(Unit(player=2, pos=(11, 1), cfg=StormSummonerCfg))
+# G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
+# G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
+# G.unitList.append(Unit(player=2, pos=(13, 2), cfg=CatapultCfg))
+# G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
+# G.GUI_loop()
+#%% Setup the chess board
+G = GameStateCtrl(withUnit=False)
+G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 6), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(3, 7), cfg=SoldierCfg))
+G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 5), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 6), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(2, 7), cfg=ArcherCfg))
+G.unitList.append(Unit(player=1, pos=(4, 8), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 7), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 6), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 5), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 2), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
+# G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
+G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
+G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
+G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
+G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
+# G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
+G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
+G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
+G.unitList.append(Unit(player=2, pos=(10, 4), cfg=KnightCfg))
+# G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
+G.unitList.append(Unit(player=2, pos=(10, 6), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 5), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 3), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 1), cfg=StoneManCfg))
+G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
+# G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(11, 1), cfg=StormSummonerCfg))
+G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
+G.unitList.append(Unit(player=2, pos=(13, 2), cfg=CatapultCfg))
+# G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
+# G.GUI_loop()
+#%%
+def gamePlay(game, playerAI, SingleUnitTurn=False, automove=True, display=True):  
+    # SingleUnitTurn: Each player is allowed to move only one unit in a turn. If false then can move all
+    total_rewards = [0.0 for player in game.playerList]
+    Exitflag = False
+    while not Exitflag:
+        if playerAI[game.curPlayer] == "human":
+            game.GUI_loop(oneturn=True)
+        else:
+            policystr, policyFun, params = playerAI[game.curPlayer]
+            Moveflag = automove # if True then without key tab, it's keeping moving.
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    Exitflag = True
+                if event.type == pg.KEYDOWN:
+                    if event.key == pg.K_TAB:
+                        Moveflag = True
+            if Moveflag:
+                # if display:
+                #     game.drawBackground()
+                #     game.drawBuildingList()
+                #     game.drawUnitList()
+                #     pg.display.update()
+                if SingleUnitTurn: game.endTurn() # Each side move one unit each turn!
+                best_seq, best_state, best_rew = policyFun(game, **params)
+                _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
+                total_rewards = [total_rewards[i] + cumrew[i] for i, _ in enumerate(game.playerList)]
+                if display:
+                    game.drawBackground()
+                    game.drawBuildingList()
+                    game.drawUnitList()
+                    pg.display.update()
+        enemyPos, enemyUnit = game.getAllEnemyUnit()
+        if len(enemyUnit) == 0:  
+            print("Player %d Win the game!"%game.curPlayer)
+
+            Exitflag=True
+    winner = game.curPlayer
+    statDict = {"Turns":game.curTurn, "TotalRewards":total_rewards, "FinalFunds":game.playerFund}
+    return winner, gameDict
+#%% This demonstrates Two Threat Elimination agents playing with each other.
+game = G
+# This is the basic loop for playing an action sequence step by step
+playerAI = {1: ("AggAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=0.9, beta=0.8, alpha=0.3, show=True, perm=False)),#"human",
+            2: ("DefAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=0.9, beta=0.9, alpha=0.7, show=True, perm=False))}
+playerAI = {1:"human", 2:"human"}
+# ("AI", greedyPolicy, dict())
+# ("RiskAI", greedyRiskMinPolicy, dict(alpha=0.1))
+# ("AI", greedyRiskThreatMinPolicy, dict(perm=False, gamma=0.7, alpha=0.15))
+# ("AI", greedyRiskThreatMinMaxPolicy, dict(perm=False, gamma=0.9, beta=0.5, alpha=0.6) #gamma=0.7, beta=0.4, alpha=0.15))
+# ("AI", ThreatElimPolicy, dict())
+# ("AI", ThreatElimPolicy_recurs, dict(recursL=2))
+winner, gameDict = gamePlay(game, playerAI)
+
+
+#%%
+Exitflag = False
+automove = True
+SingleUnitTurn = False # Each player is allowed to move only one unit in a turn. If false then can move all
+while not Exitflag:
+    if playerAI[game.curPlayer] == "human":
+        game.GUI_loop(oneturn=True)
+    else:
+        policystr, policyFun, params = playerAI[game.curPlayer]
+        Moveflag = automove # if True then without key tab, it's keeping moving.
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                Exitflag = True
+            if event.type == pg.KEYDOWN:
+                if event.key == pg.K_TAB:
+                    Moveflag = True
+        if Moveflag:
+            game.drawBackground()
+            game.drawBuildingList()
+            game.drawUnitList()
+            pg.display.update()
+            if SingleUnitTurn: game.endTurn() # Each side move one unit each turn!
+            best_seq, best_state, best_rew = policyFun(game, **params)
+            _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
+            game.drawBackground()
+            game.drawBuildingList()
+            game.drawUnitList()
+            pg.display.update()
+    enemyPos, enemyUnit = game.getAllEnemyUnit()
+    if len(enemyUnit) == 0:  
+        print("Player %d Win the game!"%game.curPlayer)
+        Exitflag=True
+
+#%%
+G.GUI_loop()
+
+
+
+
+
+
 #% Demo Random Game play
 # gamestr = GameStateCtrl()
 # actseq = []
@@ -598,203 +799,6 @@ def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, be
 # best_seq, best_state, best_rew = greedyPolicy(game)
 # _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
 #%%
-
-#%%
-# game = GameStateCtrl()
-# game.endTurn()
-# best_seq, best_state, best_rew = ThreatElimPolicy(game)
-# _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
-# best_seq, best_state, best_rew = ThreatElimPolicy(game)
-# _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True)
-# # hypo_game_post = deepcopy(game)
-# hypo_game_post.action_execute("attack", (5,5))
-# hypo_game_post.endTurn()
-# hypo_game_post.selectUnit((5, 5))
-# bestenemy_seq_post, bestenemy_state_post, bestenemy_rew_post = greedyPolicy(hypo_game_post)
-#%%
-# game = GameStateCtrl()
-# game.GUI_loop()
-#%%
-G = GameStateCtrl(withUnit=False)
-G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 6), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 7), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(2, 5), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(2, 6), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(4, 7), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 6), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 5), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 2), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
-G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
-G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
-G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
-G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
-G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
-G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
-G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
-G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
-G.unitList.append(Unit(player=2, pos=(10, 4), cfg=KnightCfg))
-# G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
-G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(10, 5), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(10, 1), cfg=StoneManCfg))
-# G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
-G.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
-G.unitList.append(Unit(player=2, pos=(11, 1), cfg=StormSummonerCfg))
-G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
-G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
-G.unitList.append(Unit(player=2, pos=(13, 2), cfg=CatapultCfg))
-G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
-# G.GUI_loop()
-#%% Setup the chess board
-G = GameStateCtrl(withUnit=False)
-G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 6), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(3, 7), cfg=SoldierCfg))
-G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(2, 5), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(2, 6), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(2, 7), cfg=ArcherCfg))
-G.unitList.append(Unit(player=1, pos=(4, 8), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 7), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 6), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 5), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 3), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 2), cfg=KnightCfg))
-# G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
-# G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
-G.unitList.append(Unit(player=1, pos=(4, 4), cfg=StoneManCfg))
-G.unitList.append(Unit(player=1, pos=(2, 2), cfg=StormSummonerCfg))
-G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
-G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
-G.unitList.append(Unit(player=2, pos=(11, 2), cfg=SoldierCfg))
-G.unitList.append(Unit(player=2, pos=(11, 3), cfg=SoldierCfg))
-# G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
-G.unitList.append(Unit(player=2, pos=(12, 3), cfg=ArcherCfg))
-G.unitList.append(Unit(player=2, pos=(12, 2), cfg=ArcherCfg))
-G.unitList.append(Unit(player=2, pos=(10, 4), cfg=KnightCfg))
-# G.unitList.append(Unit(player=2, pos=(10, 3), cfg=KnightCfg))
-G.unitList.append(Unit(player=2, pos=(10, 6), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(10, 5), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(10, 3), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(10, 2), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(10, 1), cfg=StoneManCfg))
-G.unitList.append(Unit(player=2, pos=(10, 0), cfg=StoneManCfg))
-# G.unitList.append(Unit(player=2, pos=(12, 4), cfg=StormSummonerCfg))
-G.unitList.append(Unit(player=2, pos=(12, 1), cfg=StormSummonerCfg))
-G.unitList.append(Unit(player=2, pos=(11, 1), cfg=StormSummonerCfg))
-G.unitList.append(Unit(player=2, pos=(13, 3), cfg=CatapultCfg))
-G.unitList.append(Unit(player=2, pos=(13, 4), cfg=CatapultCfg))
-G.unitList.append(Unit(player=2, pos=(13, 2), cfg=CatapultCfg))
-# G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
-# G.GUI_loop()
-#%% This demonstrates Two Threat Elimination agents playing with each other.
-game = G
-# This is the basic loop for playing an action sequence step by step
-playerAI = {1: ("AggAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=0.9, beta=0.8, alpha=0.3, show=True, perm=False)),#"human",
-            2: ("DefAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=0.9, beta=0.9, alpha=0.7, show=True, perm=False))}
-# best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
-# best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
-# best_seq, best_state, best_rew = greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.7, alpha=0.15)
-# best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.5, alpha=0.6) #gamma=0.7, beta=0.4, alpha=0.15)
-# best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
-# best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
-Exitflag = False
-automove = True
-SingleUnitTurn = False # Each player is allowed to move only one unit in a turn. If false then can move all
-while not Exitflag:
-    if playerAI[game.curPlayer] == "human":
-        game.GUI_loop(oneturn=True)
-    else:
-        policystr, policyFun, params = playerAI[game.curPlayer]
-        Moveflag = automove # if True then without key tab, it's keeping moving.
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                Exitflag = True
-            if event.type == pg.KEYDOWN:
-                if event.key == pg.K_TAB:
-                    Moveflag = True
-        if Moveflag:
-            game.drawBackground()
-            game.drawBuildingList()
-            game.drawUnitList()
-            pg.display.update()
-            if SingleUnitTurn: game.endTurn() # Each side move one unit each turn!
-            best_seq, best_state, best_rew = policyFun(game, **params)
-            _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
-            game.drawBackground()
-            game.drawBuildingList()
-            game.drawUnitList()
-            pg.display.update()
-    enemyPos, enemyUnit = game.getAllEnemyUnit()
-    if len(enemyUnit) == 0:  Exitflag=True
-#%% Pure Computer Compete
-Exitflag = False
-automove = True
-SingleUnitTurn = False # Each player is allowed to move only one unit in a turn. If false then can move all
-while not Exitflag:
-    Moveflag = automove # if True then without key tab, it's keeping moving.
-    for event in pg.event.get():
-        if event.type == pg.QUIT:
-            Exitflag = True
-        if event.type == pg.KEYDOWN:
-            if event.key == pg.K_TAB:
-                Moveflag = True
-    if Moveflag:
-        game.drawBackground()
-        game.drawBuildingList()
-        game.drawUnitList()
-        pg.display.update()
-        if SingleUnitTurn: game.endTurn() # Each side move one unit each turn!
-        # best_seq, best_state, best_rew = greedyPolicy(game, perm=True)
-        # best_seq, best_state, best_rew = greedyRiskMinPolicy(game, perm=True, alpha=0.1)
-        # best_seq, best_state, best_rew = greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.7, alpha=0.15)
-        # best_seq, best_state, best_rew = greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.5, alpha=0.6) #gamma=0.7, beta=0.4, alpha=0.15)
-        best_seq, best_state, best_rew = greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, beta=0.6,
-                                                                      alpha=0.3)
-        # best_seq, best_state, best_rew = ThreatElimPolicy(game, perm=True)
-        # best_seq, best_state, best_rew = ThreatElimPolicy_recurs(game, perm=True, recursL=2)
-        _, cumrew = game.action_seq_execute(best_seq, show=True, reward=True,)
-        game.drawBackground()
-        game.drawBuildingList()
-        game.drawUnitList()
-        pg.display.update()
-        enemyPos, enemyUnit = game.getAllEnemyUnit()
-        if len(enemyUnit)==0:  Exitflag=True
-
-#%%
-G.GUI_loop()
-
-#%%
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #%% DFS search engine
 """Obsolete"""
