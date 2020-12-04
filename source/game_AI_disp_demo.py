@@ -65,10 +65,11 @@ def greedyPolicy_approx(game, show=True, perm=False):
     """Search the action space of selection, move, attack that maximize
             next step reward
 
-    Note, this routine function has been used as the core of threat estimation. Thus it's optimized a lot!
+    Note, this routine function is used as the core of threat estimation. Thus its speed is optimized a lot!
     In `threat_unit` and `threat_pos` function it's used as the policy of the
         opponent.  the MoveAttackPair is used to fuse the steps and reduce search space.
         `getCombatStats` is used to simulate fight instead of conduct fight.
+        Note here only attack reward is considered. Unit purchasing reward is not counted.
     """
     T0 = time()
     whole_movseqs = PriorityQueue()
@@ -83,7 +84,6 @@ def greedyPolicy_approx(game, show=True, perm=False):
         for movact, AOEact in AOEAtkPairs:
             harms, alives, AOEReward = game.getAOEStats(game.curUnit, AOEact[1][1], )
             whole_movseqs.push(([movact, AOEact], AOEReward), -AOEReward)
-        if perm: shuffle(MvStandPairs)
         for movact, standact in MvStandPairs:
             whole_movseqs.push(([movact, standact], 0), 0.0)
     elif game.UIstate == SELECT_UNIT:  # This part is used by `threat_general`
@@ -98,9 +98,25 @@ def greedyPolicy_approx(game, show=True, perm=False):
             for movact, AOEact in AOEAtkPairs:
                 harms, alives, AOEReward = game.getAOEStats(selUnit, AOEact[1][1], )
                 whole_movseqs.push(([("select", [selPos]), movact, AOEact], AOEReward), -AOEReward)
-            if perm: shuffle(MvStandPairs)
             for movact, standact in MvStandPairs:
                 whole_movseqs.push(([("select", [selPos]), movact, standact], 0), 0.0)
+        # Add buying to the considerations here.
+        viablePos = game.getPurchasablePos()
+        affordableUnitType, affordableUnits = game.getAffordableUnit()
+        for buyPos in viablePos:
+            for unitType, buyUnit in zip(affordableUnitType, affordableUnits):
+                buyUnit.pos = buyPos
+                AtkMvPairs, MvStandPairs, AOEAtkPairs = game.getMovAttPair(buyUnit)  # FIXED for AOE unit.
+                for movact, atkact, attackedUnit in AtkMvPairs:
+                    harm, atkd_alive, harm2, atkr_alive, atkrReward = game.getCombatStats(buyUnit,
+                                attackedUnit,atkrpos=movact[1][0],atkdpos=atkact[1][0])
+                    # TODO may be do filtering to avoid being killed in attack
+                    whole_movseqs.push(([("buy", [buyPos, unitType]), ("select", [buyPos]), movact, atkact], atkrReward), -atkrReward)
+                for movact, AOEact in AOEAtkPairs:
+                    harms, alives, AOEReward = game.getAOEStats(buyUnit, AOEact[1][1], )
+                    whole_movseqs.push(([("buy", [buyPos, unitType]), ("select", [buyPos]), movact, AOEact], AOEReward), -AOEReward)
+                for movact, standact in MvStandPairs:
+                    whole_movseqs.push(([("buy", [buyPos, unitType]), ("select", [buyPos]), movact, standact], 0), 0.0)
     best_seq, best_rew = whole_movseqs.pop()
     if show: print("Approx Action maximization finished %.2f sec, best rew %d" % (time() - T0, best_rew))
     return best_seq, None, best_rew  # None is the state.
@@ -148,9 +164,8 @@ def greedyRiskMinPolicy(game, show=True, perm=False, alpha=1.0):
             nextcumrew = cumrew + nextrewards[curGame.curIdx]  # use the reward for this player
             if move[0] in ["move"]:
                 maxHarm = max(0.0, riskFun(move[1][0], mask=[]) - nextGame.curUnit.Defence)
-                nextrisk += maxHarm / 100.0 * unitPrice(nextGame.curUnit)
-                if maxHarm >= nextGame.curUnit.HP: # Additional risk for death.
-                    nextrisk += unitPrice(nextGame.curUnit)
+                nextrisk += maxHarm / 100.0 * unitPrice(nextGame.curUnit) \
+                    + (maxHarm >= nextGame.curUnit.HP) * unitPrice(nextGame.curUnit) # Additional risk for death.
                 # TODO: Here the unitPrice could be extended to be the strategic value instead of purely price. (Considering its location etc.) can mask out more...
             if move[0] in ["AOE", "attack", "stand", "turnover"]:  # Search Tree terminates
                 whole_movseqs.push((next_actseq, nextGame, nextcumrew, nextrisk), -nextcumrew + nextrisk * alpha)
@@ -231,9 +246,9 @@ def ThreatElimPolicy(game, gamma=0.9, perm=True):
     for pos in targetPos:
         threat_bef, _ = threat_pos(game, pos)
         threat_dict[pos] = threat_bef
-    movseq_col = Stack()
+    movseq_col = Stack()  # DFS for action sequence
     movseq_col.push(([], 0, game))
-    whole_movseqs = PriorityQueue()  # [] #
+    whole_movseqs = PriorityQueue()
     while not movseq_col.isEmpty():
         actseq, cumrew, curGame = movseq_col.pop()
         moves, nextUIstate = curGame.getPossibleMoves()
@@ -247,13 +262,11 @@ def ThreatElimPolicy(game, gamma=0.9, perm=True):
             # TODO AOE
             if move[0] is "attack":
                 targ_pos = move[1][0]
-                # threat_bef, _ = threat_pos(curGame, targ_pos)
-                # threat_bef = threat_dict[targ_pos]
                 # threat_aft, _ = threat_pos(nextGame, targ_pos)
                 # thr_elim_val = threat_bef - threat_aft # This is more accurate MC method
                 threat_bef = threat_dict[targ_pos]
                 harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0
-                thr_elim_val += threat_bef * harmPercent  # This is less accurate
+                thr_elim_val += threat_bef * harmPercent  # This is an approximation to the threat reduced.
             if move[0] is "AOE":  # Sum up the reduced HP and reduced threat for affected units.
                 for targ_pos in move[1][1]:  # targetPosList for AOE attack
                     threat_bef = threat_dict[targ_pos]
@@ -264,10 +277,11 @@ def ThreatElimPolicy(game, gamma=0.9, perm=True):
             #     threat_all_aft, _ = threat_general(curGame, curGame.curPlayer)
             #     thr_elim_val = threat_bsl - threat_all_aft
             #     print("Threat Value reduced by %.1f" % (thr_elim_val, ))
-            if move[0] in ["AOE","attack","stand","turnover"]:
+            if move[0] in ["AOE", "attack", "stand", "turnover"]:
                 whole_movseqs.push((next_actseq, nextGame, nextcumrew), -nextcumrew - thr_elim_val * gamma)
                 continue
-            movseq_col.push((next_actseq, nextcumrew, nextGame))
+            else:
+                movseq_col.push((next_actseq, nextcumrew, nextGame))
     best_seq, best_state, best_rew = whole_movseqs.pop()
     print("DFS + Threat Reduce finished %.2f sec, best rew %d" % (time() - T0, best_rew))
     return best_seq, best_state, best_rew
@@ -282,7 +296,7 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
     # threat_bsl, _ = threat_general(game, game.curPlayer, oppoPolicy=ThreatElimPolicy_recurs,
     #                                policyParam={"recursL": recursL-1})
     targetPos, targetUnit = game.getAllEnemyUnit()
-    threat_dict = {}
+    threat_dict = {}  # threats are computed in a recursive fashion.
     for pos in targetPos:
         threat_bef, _ = threat_pos(game, pos, oppoPolicy=ThreatElimPolicy_recurs,
                                    policyParam={"recursL": recursL-1})
@@ -302,8 +316,6 @@ def ThreatElimPolicy_recurs(game, show=True, gamma=0.9, perm=True, recursL=1):
             thr_elim_val = 0
             if move[0] is "attack":
                 targ_pos = move[1][0]
-                # threat_bef, _ = threat_pos(curGame, targ_pos)
-                # threat_bef = threat_dict[targ_pos]
                 # threat_aft, _ = threat_pos(nextGame, targ_pos)
                 # thr_elim_val = threat_bef - threat_aft # This is more accurate MC method
                 threat_bef = threat_dict[targ_pos]
@@ -369,9 +381,13 @@ def greedyRiskThreatMinPolicy(game, show=True, perm=False, gamma=0.9, alpha=0.2)
             next_actseq = copy(actseq)
             next_actseq.append(move)
             nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
-            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
-            if move[0] in ["move"]: # can mask out more the one you attack pose less threat to you
-                nextrisk += max(0.0, riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
+            # Evaluate the nextState x this move
+            nextcumrew = cumrew + nextrewards[curGame.curIdx]  # use the reward for this player
+            if move[0] in ["move"]:  # can mask out more the one you attack pose less threat to you
+                maxHarm = max(0.0, riskFun(move[1][0], mask=[]) - nextGame.curUnit.Defence)
+                nextrisk += maxHarm / 100.0 * unitPrice(nextGame.curUnit) \
+                        + (maxHarm >= nextGame.curUnit.HP) * unitPrice(nextGame.curUnit)  # Additional risk for death.
+                # TODO: Here the unitPrice could be extended to be the strategic value instead of purely price. (Considering its location etc.) can mask out more...
             thr_elim_val = 0
             if move[0] is "attack":
                 targ_pos = move[1][0]
@@ -434,9 +450,13 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
             next_actseq = copy(actseq)
             next_actseq.append(move)
             nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
-            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
-            if move[0] in ["move"]: # can mask out more the one you attack pose less threat to you
-                nextrisk += max(0.0, riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
+            # Evaluate the nextState x this move
+            nextcumrew = cumrew + nextrewards[curGame.curIdx]  # use the reward for this player
+            if move[0] in ["move"]:  # can mask out more the one you attack pose less threat to you
+                maxHarm = max(0.0, riskFun(move[1][0], mask=[]) - nextGame.curUnit.Defence)
+                nextrisk += maxHarm / 100.0 * unitPrice(nextGame.curUnit) \
+                             + (maxHarm >= nextGame.curUnit.HP) * unitPrice(nextGame.curUnit)  # Additional risk for death.
+                # TODO: Here the unitPrice could be extended to be the strategic value instead of purely price. (Considering its location etc.) can mask out more...
             thr_elim_val = 0
             if move[0] is "attack":
                 targ_pos = move[1][0]
@@ -505,24 +525,19 @@ def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, be
             next_actseq = copy(actseq)
             next_actseq.append(move)
             nextGame, nextrewards = curGame.action_execute(*move, clone=True, show=False, reward=True, checklegal=False)
-            nextcumrew = cumrew + nextrewards[curGame.curPlayer - 1]  # use the reward for this player
-            if move[0] in ["move"]: # can mask out more the one you attack pose less threat to you
-                nextrisk += max(0.0, riskFun(move[1][0], mask=[]) - curGame.curUnit.Defence) / 100.0 * unitPrice(curGame.curUnit)
+            # Evaluate the nextState x this move
+            nextcumrew = cumrew + nextrewards[curGame.curIdx]  # use the reward for this player
+            if move[0] in ["move"]:  # can mask out more the one you attack pose less threat to you
+                maxHarm = max(0.0, riskFun(move[1][0], mask=[]) - nextGame.curUnit.Defence)
+                nextrisk += maxHarm / 100.0 * unitPrice(nextGame.curUnit) \
+                            + (maxHarm >= nextGame.curUnit.HP) * unitPrice(nextGame.curUnit)  # Additional risk for death.
+                # TODO: Here the unitPrice could be extended to be the strategic value instead of purely price. (Considering its location etc.) can mask out more...
             thr_elim_val = 0.0
-            if move[0] is ["AOE", "attack", "stand"]: # this is threat elimination in global sense
+            if move[0] is ["AOE", "attack", "stand"]:  # this is threat elimination in global sense. much more accurate
                 thr_reduc_val, thr_reduc_mov = threat_general(curGame, game.curPlayer, oppoPolicy=greedyPolicy_approx)
                 thr_elim_val = threat_bsl - thr_reduc_val
-            #     targ_pos = move[1][0]
-            #     threat_bef = threat_dict[targ_pos]
-            #     harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0  # should be positive now
-            #     thr_elim_val += threat_bef * harmPercent  # This is less accurate
-            # if move[0] is "AOE":
-            #     for targ_pos in move[1][1]:  # targetPosList for AOE attack
-            #         threat_bef = threat_dict[targ_pos]
-            #         harmPercent = computeHPloss(curGame, nextGame, targ_pos) / 100.0  # should be positive now
-            #         thr_elim_val += threat_bef * harmPercent
             # print("Threat Value reduced by %.1f" % (thr_elim_val))
-            threat_posing = 0.0 # This simulation is too slow, need a better way to estimate it.
+            threat_posing = 0.0  #
             if move[0] in ["AOE", "attack", "stand"]:
                 threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit, oppoPolicy=greedyPolicy_approx)
             if move[0] in ["AOE", "attack", "stand", "turnover"]:
@@ -530,7 +545,6 @@ def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, be
                                    -nextcumrew + nextrisk * alpha - threat_posing * beta - thr_elim_val * gamma)
                 continue
             movseq_col.push((next_actseq, nextcumrew, nextrisk, nextGame))
-    # print(whole_movseqs)
     best_seq, best_state, best_rew, bestrisk, best_threat_elim, best_thr_posing = whole_movseqs.pop()
     if show: print("DFS finished %.2f sec, best rew %d, least risk %d, threat elim %d, threat posing %d" %
                    (time() - T0, best_rew, bestrisk, best_threat_elim, best_thr_posing))
