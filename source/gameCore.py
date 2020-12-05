@@ -74,37 +74,8 @@ unitPrice = lambda unit: valueDict[unit.Type]
 #%%
 showpos = [(3, 7), (4, 7), (5, 7), (6, 7), (7, 7), (8, 7)]
 buyUnitPosMap = {pos:unitType for pos, unitType in zip(showpos, priceDict.keys())}
-#%% Buildings
-class Building:
-    def __init__(self, player, pos, cfg=None):
-        self.player = player
-        self.pos = pos
-        self.broken = False
-        # self.Buff = []  # Buff is a state
-        if cfg is not None:
-            for key, val in cfg.items():
-                self.__setattr__(key, val)
-        else:
-            self.Type = ""
-            self.HP = 100
-            self.TileAtk = 0
-            self.TileDef = 0
-            self.TileHeal = 0
-            self.Earn = 0
-            self.Props = []
 
-    def __deepcopy__(self, memodict={}):
-        B = Building(self.player, self.pos)
-        for key, vals in self.__dict__.items():
-            B.__dict__[key] = deepcopy(vals)
-        return B
-
-PURCHASE = 1
-HEALING = 2
-OCCUPIABLE = 3
-CastleCfg = {"Type": "Castle", "TileAtk": 0, "TileDef": 15, "HP": 100, "Props": [PURCHASE, OCCUPIABLE], "Earn": 100}
-VillageCfg = {"Type": "Village", "TileAtk": 0, "TileDef": 25, "HP": 100, "Props": [HEALING, OCCUPIABLE], "Earn": 50}
-Building(None, (1, 1), CastleCfg)
+from buildingCore import *
 #%%
 def playerIterator(playerList):
     turn = 0
@@ -1016,6 +987,37 @@ class GameStateCtrl:
                 targetPos.append(unit.pos)
                 targetUnit.append(unit)
         return targetPos, targetUnit
+
+    def getClosestEnemyHQDist(G, pos, curPlayer=None, unoccupiedOnly=False):
+        if curPlayer is None: curPlayer = G.curPlayer
+        mindist, minpos = 1E8, None
+        for bldg in G.buildingList:
+            if bldg.Type == "Castle" and not (bldg.player == curPlayer):
+                dist = G.distance(pos, bldg.pos) # Use L1 distance, instead of Map distance! 
+                if dist < mindist: mindist, minpos = dist, bldg.pos
+        return mindist, minpos
+
+    def getEnemyHQPos(G, curPlayer=None, unoccupiedOnly=False):
+        if curPlayer is None: curPlayer = G.curPlayer
+        HQposes = []
+        HQlist = []
+        for bldg in G.buildingList:
+            if bldg.Type == "Castle" and not (bldg.player == curPlayer):
+                HQposes.append(bldg.pos)
+                HQlist.append(bldg)
+        return HQposes, HQlist
+
+    def getClosestEnemyDist(G, pos, curPlayer=None):
+        if curPlayer is None: curPlayer = G.curPlayer
+        mindist, minpos = 1E8, None
+        for unit in G.unitList:
+            if not (unit.player == curPlayer): # unit.Type == "Castle" and 
+                dist = G.distance(pos, unit.pos) # Use L1 distance, instead of Map distance! 
+                if dist < mindist: mindist, minpos = dist, unit.pos
+        return mindist, minpos
+
+    def distance(G, pos1, pos2):
+        return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
 
     def getObstacleInRange(G, curUnit, movRange, unitList=None):
         if unitList is None: unitList = G.unitList

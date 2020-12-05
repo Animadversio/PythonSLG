@@ -31,10 +31,9 @@ Advanced policy for planning multiple unit action coordination is a crucial part
     * position maximize threat posing on others
     * Position minimize danger posed by opponent units.
     * Attack unit that eliminate the most threat posed by it. 
+* Dynamic threat estimation by employing greedy policy on the opponent and find the maximal damage they can do.
 
-`![rpg1](https://raw.githubusercontent.com/marblexu/PythonStrategyRPG/master/demo/rpg1.png)`
-`![rpg2](https://raw.githubusercontent.com/marblexu/PythonStrategyRPG/master/demo/rpg2.png)`
-
+![](GameScreen01.png)
 
 # Working in Progress
 
@@ -88,7 +87,15 @@ Advanced policy for planning multiple unit action coordination is a crucial part
     - [x] Add buying action
 - [x] Make it compatible with previous policies, test the game with unit purchasing with the search based AIs. @Dec.3 @Nov.28
 - [x] Let AI and human play together or AI with different parameters play and compete. 
-- [x] Considering buying in threat computation. (adding it to the oppopolicy)
+- [x] Considering buying in threat computation. (adding it to the oppopolicy) @Dec.4
+- [x] Change the Risk evaluation @Dec.4
+- [x] Add attraction to enemy to avoid being too defensive 
+    * Actually this should be a function of the overall strategy, advance or retreat or focus on certain nodes.
+- [x] Build in HQ attraction for enemy strategy as well. (which will induce defence for this in threat elimination part.) @Dec.4
+- [x] Strategy to save the HQ of both sides. (Add in threat value for occupying HQ, and thrat elim will work) @Dec.4
+- [x] Speed up the threat computation! And debug the threat value. @Dec.4
+    * Player AI begins to use body walls to defend the others. 
+- [ ] Save some event list for offline learning purpose! 
 - [ ] Change the DFS part to more efficient 
 - [ ] Prune the main search to limit to trunk of action sequences. 
 - [ ] Make large scale self play possible. 
