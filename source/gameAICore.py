@@ -122,6 +122,24 @@ def greedyPolicy_approx(game, show=True, perm=False):
     if show: print("Approx Action maximization finished %.2f sec, best rew %d" % (time() - T0, best_rew))
     return best_seq, None, best_rew  # None is the state.
 
+def bestMovAttSeq(game, curunit, enemyHQpos=set(), occupReward=500):
+    best_seq, best_rew = None, -1E8
+    AtkMvPairs, MvStandPairs, AOEAtkPairs = game.getMovAttPair(curunit)  # FIXED for AOE unit.
+    for movact, atkact, attackedUnit in AtkMvPairs:
+        occupRew = (movact[1][0] in enemyHQpos) * occupReward
+        harm, atkd_alive, harm2, atkr_alive, atkrReward = game.getCombatStats(curunit,
+                                                                              attackedUnit, atkrpos=movact[1][0],
+                                                                              atkdpos=atkact[1][0])
+        # TODO may be do filtering to avoid being killed in attack
+        if best_rew < atkrReward + occupRew: best_seq, best_rew = ([movact, atkact], atkrReward + occupRew)
+    for movact, AOEact in AOEAtkPairs:
+        occupRew = (movact[1][0] in enemyHQpos) * occupReward
+        harms, alives, AOEReward = game.getAOEStats(curunit, AOEact[1][1], )
+        if best_rew < AOEReward + occupRew: best_seq, best_rew = ([movact, AOEact], AOEReward + occupRew)
+    for movact, standact in MvStandPairs:
+        occupRew = (movact[1][0] in enemyHQpos) * occupReward
+        if best_rew < occupRew: best_seq, best_rew = ([movact, standact], occupRew)
+    return best_seq, best_rew
 
 def _threat_greedyOccupPolicy(game, show=True, occupReward=500):
     """Get rid of tha action, retain the threat part. Esp. Add threat value for occupying the other sides' HQ"""
@@ -132,58 +150,22 @@ def _threat_greedyOccupPolicy(game, show=True, occupReward=500):
     HQpos = set(HQpos)
     if game.UIstate == SELECT_MOVTARGET and game.curUnit is not None:  # This part is used by `threat_unit`
         """Best move after selecting an unit."""
-        AtkMvPairs, MvStandPairs, AOEAtkPairs = game.getMovAttPair(game.curUnit)  # FIXED for AOE unit.
-        for movact, atkact, attackedUnit in AtkMvPairs:
-            occupRew = (movact[1][0] in HQpos) * occupReward
-            harm, atkd_alive, harm2, atkr_alive, atkrReward = game.getCombatStats(game.curUnit,
-                    attackedUnit, atkrpos=movact[1][0], atkdpos=atkact[1][0])
-            # TODO may be do filtering to avoid being killed in attack
-            if best_rew < atkrReward+occupRew: best_seq, best_rew = ([movact, atkact], atkrReward + occupRew)
-        for movact, AOEact in AOEAtkPairs:
-            occupRew = (movact[1][0] in HQpos) * occupReward
-            harms, alives, AOEReward = game.getAOEStats(game.curUnit, AOEact[1][1], )
-            if best_rew < AOEReward+occupRew: best_seq, best_rew = ([movact, AOEact], AOEReward + occupRew)
-        for movact, standact in MvStandPairs:
-            occupRew = (movact[1][0] in HQpos) * occupReward
-            if best_rew < occupRew: best_seq, best_rew = ([movact, standact],  occupRew)
+        curbest_seq, curbest_rew = bestMovAttSeq(game, game.curUnit, enemyHQpos=HQpos, occupReward=occupReward)
+        if best_rew < curbest_rew: best_seq, best_rew = curbest_seq, curbest_rew
+
     elif game.UIstate == SELECT_UNIT:  # This part is used by `threat_general`
         selectablePos, selectableUnits = game.getSelectableUnit(unitList=None, curPlayer=None)
         for selPos, selUnit in zip(selectablePos, selectableUnits):
-            AtkMvPairs, MvStandPairs, AOEAtkPairs = game.getMovAttPair(selUnit)  # FIXED for AOE unit.
-            for movact, atkact, attackedUnit in AtkMvPairs:
-                occupRew = (movact[1][0] in HQpos) * occupReward
-                harm, atkd_alive, harm2, atkr_alive, atkrReward = game.getCombatStats(selUnit,
-                                              attackedUnit, atkrpos=movact[1][0], atkdpos=atkact[1][0])
-                # TODO may be do filtering to avoid being killed in attack
-                if best_rew < atkrReward+occupRew: best_seq, best_rew = ([("select", [selPos]), movact, atkact], atkrReward+occupRew)
-            for movact, AOEact in AOEAtkPairs:
-                occupRew = (movact[1][0] in HQpos) * occupReward
-                harms, alives, AOEReward = game.getAOEStats(selUnit, AOEact[1][1], )
-                if best_rew < AOEReward+occupRew: best_seq, best_rew = ([("select", [selPos]), movact, AOEact], AOEReward+occupRew)
-            for movact, standact in MvStandPairs:
-                occupRew = (movact[1][0] in HQpos) * occupReward
-                if best_rew < occupRew: best_seq, best_rew = ([("select", [selPos]), movact, standact], occupRew)
-        # Add buying to the considerations here.
+            curbest_seq, curbest_rew = bestMovAttSeq(game, selUnit, enemyHQpos=HQpos, occupReward=occupReward)
+            if best_rew < curbest_rew: best_seq, best_rew = [("select", [selPos]), *curbest_seq], curbest_rew
+        """Best Move after buying a new unit."""
         viablePos, viableTile = game.getPurchasablePos()
         affordableUnitType, affordableUnits = game.getAffordableUnit()
         for buyPos in viablePos:
             for unitType, buyUnit in zip(affordableUnitType, affordableUnits):
                 buyUnit.pos = buyPos
-                AtkMvPairs, MvStandPairs, AOEAtkPairs = game.getMovAttPair(buyUnit)  # FIXED for AOE unit.
-                for movact, atkact, attackedUnit in AtkMvPairs:
-                    occupRew = (movact[1][0] in HQpos) * occupReward
-                    harm, atkd_alive, harm2, atkr_alive, atkrReward = game.getCombatStats(buyUnit,
-                                attackedUnit,atkrpos=movact[1][0],atkdpos=atkact[1][0])
-                    # TODO may be do filtering to avoid being killed in attack
-                    if best_rew < atkrReward+occupRew: best_seq, best_rew = ([("buy", [buyPos, unitType]), ("select", [buyPos]), movact, atkact], atkrReward+occupRew)
-                for movact, AOEact in AOEAtkPairs:
-                    occupRew = (movact[1][0] in HQpos) * occupReward
-                    harms, alives, AOEReward = game.getAOEStats(buyUnit, AOEact[1][1], )
-                    if best_rew < AOEReward+occupRew: best_seq, best_rew = ([("buy", [buyPos, unitType]), ("select", [buyPos]), movact, AOEact], AOEReward+occupRew)
-                for movact, standact in MvStandPairs:
-                    occupRew = (movact[1][0] in HQpos) * occupReward
-                    if best_rew < occupRew: best_seq, best_rew = ([("buy", [buyPos, unitType]), ("select", [buyPos]), movact, standact], occupRew)
-    # best_seq, best_rew = whole_movseqs.pop()
+                curbest_seq, curbest_rew = bestMovAttSeq(game, buyUnit, enemyHQpos=HQpos, occupReward=occupReward)
+                if best_rew < curbest_rew:  best_seq, best_rew = [("buy", [buyPos, unitType]), *curbest_seq], curbest_rew
     if show: print("Approx Action maximization finished %.2f sec, best rew %d" % (time() - T0, best_rew))
     return best_seq, None, best_rew  # None is the state.
 

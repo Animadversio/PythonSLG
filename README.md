@@ -95,6 +95,9 @@ Advanced policy for planning multiple unit action coordination is a crucial part
 - [x] Strategy to save the HQ of both sides. (Add in threat value for occupying HQ, and thrat elim will work) @Dec.4
 - [x] Speed up the threat computation! And debug the threat value. @Dec.4
     * Player AI begins to use body walls to defend the others. 
+* Note for an action sequence, there are some single move evaluation function and some final evaluation function. 
+    Combine the two into a single final evaluation will make the thing inefficient. Since some evaluation are determined in the middle of the sequence instead of the end of it. Thus evaluate at the parent node part will save computation. 
+- [ ] Self play parameter optimization. 
 - [ ] Save some event list for offline learning purpose! 
 - [ ] Change the DFS part to more efficient 
 - [ ] Prune the main search to limit to trunk of action sequences. 
