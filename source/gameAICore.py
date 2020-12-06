@@ -531,7 +531,7 @@ def greedyRiskThreatMinMaxPolicy(game, show=True, perm=False, gamma=0.9, beta=0.
     return best_seq, best_state, best_rew
 
 
-def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, beta=0.4, alpha=0.4, HQWeight=1, enemyWeight=2):
+def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, beta=0.4, alpha=0.4, HQWeight=1, enemyWeight=2, occupThreat=500):
     """Search the action space of selection, move, attack (Current best strategy)
     Search the action space that maximize
             next step reward + gamma * threat_elim + beta * threat_posing - alpha * risk(pos)
@@ -548,7 +548,7 @@ def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, be
         harmValues[pos] = unit.Attack * unit.HP / 100.0
         threat_bef, _ = threat_pos(game, pos)
         threat_dict[pos] = threat_bef
-    threat_bsl, _ = threat_general(game, game.curPlayer, oppoPolicy=_threat_greedyOccupPolicy)
+    threat_bsl, _ = threat_general(game, game.curPlayer, oppoPolicy=_threat_greedyOccupPolicy, policyParam={"occupReward": occupThreat})
     def riskFun(pos, mask=[], defence=0):
         """Need more development"""
         risk = 0.0
@@ -584,14 +584,16 @@ def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, be
                 # TODO: Here the unitPrice could be extended to be the strategic value instead of purely price. (Considering its location etc.) can mask out more...
             thr_elim_val = 0.0
             if move[0] is ["AOE", "attack", "stand"]:  # this is threat elimination in global sense. much more accurate
-                thr_reduc_val, thr_reduc_mov = threat_general(curGame, game.curPlayer, oppoPolicy=_threat_greedyOccupPolicy)
+                thr_reduc_val, thr_reduc_mov = threat_general(curGame, game.curPlayer, oppoPolicy=_threat_greedyOccupPolicy,
+                                                              policyParam={"occupReward": occupThreat})
                 thr_elim_val = threat_bsl - thr_reduc_val
             # print("Threat Value reduced by %.1f" % (thr_elim_val))
             threat_posing = 0.0  #
             HQattract = 0.0
             enemyattract = 0.0
             if move[0] in ["AOE", "attack", "stand"]:  # nextGame.curUnit is None
-                threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit, oppoPolicy=_threat_greedyOccupPolicy)
+                threat_posing, threat_mov = threat_unit(curGame, curGame.curUnit, oppoPolicy=_threat_greedyOccupPolicy,
+                                                              policyParam={"occupReward": occupThreat})
                 HQattract = 1.0 / (nextGame.getClosestEnemyHQDist(curGame.curUnit.pos)[0] + 0.01)
                 enemyattract = 1.0 / nextGame.getClosestEnemyDist(curGame.curUnit.pos)[0]
 
@@ -667,6 +669,9 @@ def greedyRiskThreatMinMaxExactPolicy(game, show=True, perm=False, gamma=0.9, be
 # G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
 # G.GUI_loop()
 #%% Setup the chess board
+from source.gameCore import *
+from source.buildingCore import *
+import source.buildingCore as buildingCore
 def gameSetup():
     G = GameStateCtrl(withUnit=False)
     G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
@@ -713,6 +718,61 @@ def gameSetup():
     G.unitList.append(Unit(player=2, pos=(13, 2), cfg=CatapultCfg))
     G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
     return G
+
+def gameSetup2():
+    G = GameStateCtrl(withUnit=False, withBuilding=False)
+    G.unitList.append(Unit(player=1, pos=(3, 0), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=1, pos=(3, 1), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=1, pos=(3, 2), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=1, pos=(3, 3), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=1, pos=(3, 4), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=1, pos=(3, 5), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=1, pos=(2, 0), cfg=StormSummonerCfg))
+    G.unitList.append(Unit(player=1, pos=(2, 1), cfg=StormSummonerCfg))
+    G.unitList.append(Unit(player=1, pos=(2, 2), cfg=ArcherCfg))
+    G.unitList.append(Unit(player=1, pos=(2, 3), cfg=ArcherCfg))
+    G.unitList.append(Unit(player=1, pos=(2, 4), cfg=ArcherCfg))
+    G.unitList.append(Unit(player=1, pos=(2, 5), cfg=ArcherCfg))
+    G.unitList.append(Unit(player=1, pos=(4, 0), cfg=KnightCfg))
+    G.unitList.append(Unit(player=1, pos=(4, 1), cfg=KnightCfg))
+    G.unitList.append(Unit(player=1, pos=(4, 2), cfg=KnightCfg))
+    G.unitList.append(Unit(player=1, pos=(4, 3), cfg=StoneManCfg))
+    G.unitList.append(Unit(player=1, pos=(4, 4), cfg=KnightCfg))
+    G.unitList.append(Unit(player=1, pos=(4, 5), cfg=KnightCfg))
+    G.unitList.append(Unit(player=1, pos=(1, 3), cfg=CatapultCfg))
+    G.unitList.append(Unit(player=1, pos=(1, 2), cfg=CatapultCfg))
+    G.unitList.append(Unit(player=1, pos=(1, 1), cfg=CatapultCfg))
+    G.unitList.append(Unit(player=1, pos=(1, 0), cfg=CatapultCfg))
+
+    G.unitList.append(Unit(player=2, pos=(11, 4), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=2, pos=(11, 5), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=2, pos=(11, 6), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=2, pos=(11, 7), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=2, pos=(11, 8), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=2, pos=(11, 9), cfg=SoldierCfg))
+    G.unitList.append(Unit(player=2, pos=(12, 8), cfg=StormSummonerCfg))
+    G.unitList.append(Unit(player=2, pos=(12, 9), cfg=StormSummonerCfg))
+    G.unitList.append(Unit(player=2, pos=(12, 4), cfg=ArcherCfg))
+    G.unitList.append(Unit(player=2, pos=(12, 5), cfg=ArcherCfg))
+    G.unitList.append(Unit(player=2, pos=(12, 6), cfg=ArcherCfg))
+    G.unitList.append(Unit(player=2, pos=(12, 7), cfg=ArcherCfg))
+    G.unitList.append(Unit(player=2, pos=(10, 4), cfg=KnightCfg))
+    G.unitList.append(Unit(player=2, pos=(10, 5), cfg=KnightCfg))
+    G.unitList.append(Unit(player=2, pos=(10, 6), cfg=KnightCfg))
+    G.unitList.append(Unit(player=2, pos=(10, 7), cfg=StoneManCfg))
+    G.unitList.append(Unit(player=2, pos=(10, 8), cfg=KnightCfg))
+    G.unitList.append(Unit(player=2, pos=(10, 9), cfg=KnightCfg))
+    G.unitList.append(Unit(player=2, pos=(13, 6), cfg=CatapultCfg))
+    G.unitList.append(Unit(player=2, pos=(13, 7), cfg=CatapultCfg))
+    G.unitList.append(Unit(player=2, pos=(13, 8), cfg=CatapultCfg))
+    G.unitList.append(Unit(player=2, pos=(13, 9), cfg=CatapultCfg))
+    G.buildingList.append(Building(player=1, pos=(1, 1), cfg=CastleCfg))
+    G.buildingList.append(Building(player=2, pos=(13, 8), cfg=CastleCfg))
+    G.buildingList.append(Building(player=1, pos=(1, 2), cfg=VillageCfg))
+    G.buildingList.append(Building(player=2, pos=(13, 7), cfg=VillageCfg))
+    return G
+# game = gameSetup2()
+# game.GUI_loop()
 # G.unitList.append(Unit(player=2, pos=(13, 1), cfg=CatapultCfg))
 # G.GUI_loop()
 #%%
@@ -775,19 +835,20 @@ def gamePlay(game, playerAI, SingleUnitTurn=False, automove=True, display=True):
 # winner, gameDict, act_record = gamePlay(game, playerAI)
 # Risk fun, Value fun
 #%%
-match_results = []
-for triali in range(10):
-    # This is the basic loop for playing an action sequence step by step
-    playerAI = {1: ("DefAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=1.5, beta=2.0, alpha=0.3, show=True, perm=False)),#"human",
-                2: ("AggAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=1.2, beta=1.1, alpha=0.7, show=True, perm=False))}
-    game = gameSetup()
-    winner12, gameDict12, act_record12 = gamePlay(game, playerAI)
-    match_results.append((playerAI, winner12, gameDict12, act_record12))
+if __name__ == "__main__":
+    match_results = []
+    for triali in range(10):
+        # This is the basic loop for playing an action sequence step by step
+        playerAI = {1: ("DefAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=1.5, beta=2.0, alpha=0.3, show=True)),#"human",
+                    2: ("AggAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=1.2, beta=1.1, alpha=0.7, show=True))}
+        game = gameSetup()
+        winner12, gameDict12, act_record12 = gamePlay(game, playerAI)
+        match_results.append((playerAI, winner12, gameDict12, act_record12))
 
-    playerAI = {2: ("DefAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=1.5, beta=2.0, alpha=0.3, show=True, perm=False)),#"human",
-                1: ("AggAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=1.2, beta=1.1, alpha=0.7, show=True, perm=False))}
-    game = gameSetup()
-    winner21, gameDict21, act_record21 = gamePlay(game, playerAI)
-    match_results.append((playerAI, winner21, gameDict21, act_record21))
+        playerAI = {2: ("DefAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=1.5, beta=2.0, alpha=0.3, show=True)),#"human",
+                    1: ("AggAI", greedyRiskThreatMinMaxExactPolicy, dict(gamma=1.2, beta=1.1, alpha=0.7, show=True))}
+        game = gameSetup()
+        winner21, gameDict21, act_record21 = gamePlay(game, playerAI)
+        match_results.append((playerAI, winner21, gameDict21, act_record21))
 
 #%%

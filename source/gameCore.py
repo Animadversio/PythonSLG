@@ -75,7 +75,7 @@ unitPrice = lambda unit: valueDict[unit.Type]
 showpos = [(3, 7), (4, 7), (5, 7), (6, 7), (7, 7), (8, 7)]
 buyUnitPosMap = {pos:unitType for pos, unitType in zip(showpos, priceDict.keys())}
 
-from buildingCore import *
+from source.buildingCore import *
 #%%
 def playerIterator(playerList):
     turn = 0

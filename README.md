@@ -97,7 +97,8 @@ Advanced policy for planning multiple unit action coordination is a crucial part
     * Player AI begins to use body walls to defend the others. 
 * Note for an action sequence, there are some single move evaluation function and some final evaluation function. 
     Combine the two into a single final evaluation will make the thing inefficient. Since some evaluation are determined in the middle of the sequence instead of the end of it. Thus evaluate at the parent node part will save computation. 
-- [ ] Self play parameter optimization. 
+- [x] Self play parameter optimization! Semi-Genetic Algorithm @Dec.4
+- [ ] Make unit value learnable
 - [ ] Save some event list for offline learning purpose! 
 - [ ] Change the DFS part to more efficient 
 - [ ] Prune the main search to limit to trunk of action sequences. 
