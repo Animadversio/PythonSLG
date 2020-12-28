@@ -1,3 +1,4 @@
+__author__ = 'Animadversio_Binxu'
 from source.gameAICore import *
 from random import gauss, random
 import pickle, json
